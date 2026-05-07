@@ -1,0 +1,419 @@
+-- UI/Base/Widgets/Sections/SaveOps.lua
+-- Save action buttons (rename, duplicate, world actions, strip mods) and recovery flags UI.
+-- All logic is contained within these functions; screens pass no callbacks.
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, missing-return-value
+
+ManualSave = ManualSave or {}
+
+local sanitize    = ManualSave.sanitize
+local slotDisplay = ManualSave.slotDisplay
+
+-- SAVE ACTIONS + WORLD ACTIONS button group.
+-- opts: { y, w, save, st }
+-- Returns: height consumed
+function ManualSave.makeSaveActions(parent, opts)
+    local TH       = ManualSave.Theme
+    local FHS      = TH.FONT_HGT_SMALL
+    local btnH     = TH.BUTTON_HGT
+    local w        = opts.w
+    local m        = opts.save
+    local st       = opts.st
+    local halfBtnW = math.floor((w - TH.GAP) / 2)
+    local ry       = opts.y
+
+    local function sectionLbl(y, text)
+        ManualSave.makeLabel(parent, {
+            x=0, y=y, w=w, h=FHS + 4,
+            text=text, textY=2,
+            r=TH.DIM_R, g=TH.DIM_G, b=TH.DIM_B, a=0.8,
+        })
+        return FHS + 4
+    end
+
+    -- SAVE ACTIONS
+    ry = ry + sectionLbl(ry, "SAVE ACTIONS")
+    ManualSave.makeButton(parent, {
+        x=0, y=ry, w=halfBtnW, h=btnH,
+        label="Rename save", style="normal",
+        groups={"bat_required"},
+        onClick = function()
+            if ManualSave.SignalBus.isBatAlive() == false then return end
+            if not st.selected then return end
+            ManualSave.openNameInputDialog({
+                title       = "Rename save:",
+                value       = st.selected.slot,
+                confirm     = "Rename",
+                helpSection = "rename",
+                onConfirm = function(newName)
+                    newName = sanitize(newName)
+                    if newName == "" or newName == st.selected.slot then return end
+                    local old = st.selected
+                    ManualSave.SaveManager.rename(old.GMODE or old.gameMode,
+                        old.WORLD or old.world, old.slot, newName,
+                        function(status)
+                            if status == "OK" then
+                                old.slot = newName
+                                ManualSave.LoadScreen.applyFilter()
+                                ManualSave.closeMoreScreen()
+                            end
+                        end)
+                end,
+            })
+        end,
+    })
+    ManualSave.makeButton(parent, {
+        x=halfBtnW+TH.GAP, y=ry, w=halfBtnW, h=btnH,
+        label="Duplicate", style="normal",
+        groups={"bat_required"},
+        onClick = function()
+            if ManualSave.SignalBus.isBatAlive() == false then return end
+            if not st.selected then return end
+            ManualSave.openNameInputDialog({
+                title       = "Duplicate save as:",
+                value       = ManualSave.nextCopyName(st.selected.slot, st.saves),
+                confirm     = "Duplicate",
+                helpSection = "duplicate",
+                onConfirm = function(newName)
+                    newName = sanitize(newName)
+                    if newName == "" then return end
+                    local old = st.selected
+                    ManualSave.SaveManager.clone(old.GMODE or old.gameMode,
+                        old.WORLD or old.world, old.slot, newName,
+                        function(status)
+                            if status == "OK" then
+                                local copy = {}
+                                for k, v in pairs(old) do copy[k] = v end
+                                copy.slot = newName
+                                table.insert(st.saves, copy)
+                                ManualSave.LoadScreen.applyFilter()
+                            end
+                        end)
+                end,
+            })
+        end,
+    })
+    ry = ry + btnH + TH.GAP
+
+    -- WORLD ACTIONS
+    ry = ry + sectionLbl(ry, "WORLD ACTIONS")
+    local infoSz  = 20
+    local waInfoY = ry + math.floor((btnH - infoSz) / 2)
+
+    ManualSave.makeButton(parent, {
+        x=0, y=ry, w=halfBtnW, h=btnH,
+        label="Rename world", style="normal",
+        groups={"bat_required"},
+        onClick = function()
+            if ManualSave.SignalBus.isBatAlive() == false then return end
+            if not st.selected then return end
+            local old = st.selected
+            ManualSave.openNameInputDialog({
+                title       = "Rename world:",
+                value       = old.world or old.WORLD or "",
+                confirm     = "Rename",
+                helpSection = "renameworld",
+                onConfirm = function(newWorld)
+                    newWorld = sanitize(newWorld)
+                    local gmode    = old.GMODE or old.gameMode
+                    local oldWorld = old.WORLD or old.world
+                    if newWorld == "" or newWorld == oldWorld then return end
+                    ManualSave.SignalBus.send("RENAME_WORLD",
+                        { GMODE=gmode, OLD_WORLD=oldWorld, NEW_WORLD=newWorld },
+                        function(status)
+                            if status ~= "OK" then return end
+                            for _, b in ipairs(st.saves) do
+                                if b.world == oldWorld and (b.GMODE or b.gameMode) == gmode then
+                                    ManualSave.MetaCache.move(gmode, oldWorld, newWorld, b.slot)
+                                    b.world = newWorld
+                                end
+                            end
+                            ManualSave.LoadScreen.applyFilter()
+                            ManualSave.closeMoreScreen()
+                        end)
+                end,
+            })
+        end,
+    })
+    ManualSave.makeInfoButton(parent, {
+        x=halfBtnW-infoSz-3, y=waInfoY, sz=infoSz, popW=240,
+        lines = {
+            { "Renames the world folder on disk.",        "normal" },
+            { "All saves sharing this world name",        "normal" },
+            { "are affected together.",                   "normal" },
+            { "",                                                   },
+            { "The old folder name becomes invalid.",     "dim"    },
+        },
+    })
+
+    local wa2X = halfBtnW + TH.GAP
+    ManualSave.makeButton(parent, {
+        x=wa2X, y=ry, w=halfBtnW, h=btnH,
+        label="Strip mods", style="danger",
+        groups={"bat_required"},
+        onClick = function()
+            if ManualSave.SignalBus.isBatAlive() == false then return end
+            if not st.selected then return end
+            local old  = st.selected
+            local base = slotDisplay(old.slot) .. " [NO MODS]"
+            ManualSave.openNameInputDialog({
+                title       = "Strip mods — save copy as:",
+                value       = base,
+                confirm     = "Create copy",
+                helpSection = "stripmods",
+                onConfirm = function(newName)
+                    newName = sanitize(newName)
+                    if newName == "" then return end
+                    ManualSave.SignalBus.send("CLONE_STRIP",
+                        { GMODE=old.GMODE or old.gameMode, WORLD=old.WORLD or old.world,
+                          OLD_SLOT=old.slot, NEW_SLOT=newName },
+                        function(status)
+                            if status ~= "OK" then return end
+                            ManualSave.MetaCache.copy(old.GMODE or old.gameMode,
+                                old.WORLD or old.world, old.slot, newName, true)
+                            local copy = {}
+                            for k, v in pairs(old) do copy[k] = v end
+                            copy.slot = newName; copy.MODS = ""
+                            table.insert(st.saves, copy)
+                            ManualSave.LoadScreen.applyFilter()
+                        end)
+                end,
+            })
+        end,
+    })
+    ManualSave.makeInfoButton(parent, {
+        x=wa2X+halfBtnW-infoSz-3, y=waInfoY, sz=infoSz, popW=240, color="danger",
+        lines = {
+            { "Creates a copy of this save with",         "normal" },
+            { "the mod list cleared from metadata.",      "normal" },
+            { "",                                                   },
+            { "Mod content already in the world",         "dim"    },
+            { "(items, structures) is not removed.",      "dim"    },
+            { "Use to load vanilla or with a",            "dim"    },
+            { "different mod set.",                       "dim"    },
+        },
+    })
+    ry = ry + btnH
+
+    return ry - opts.y
+end
+
+-- RECOVERY FLAGS section: header, flag cards, time preset row, LOAD WITH FLAGS button.
+-- opts: { y, w, save, st }
+function ManualSave.makeRecoveryFlags(parent, opts)
+    local TH    = ManualSave.Theme
+    local FHS   = TH.FONT_HGT_SMALL
+    local btnH  = TH.BUTTON_HGT
+    local w     = opts.w
+    local m     = opts.save
+    local st    = opts.st
+    local flags = st.recoveryFlags
+    local ry    = opts.y
+
+    -- Header: danger-tinted bg + border, thin danger strip at top, two text labels
+    local hdrH = FHS * 2 + 14
+    local hdr = ManualSave.makePanel(parent, {
+        x=0, y=ry, w=w, h=hdrH,
+        bg    ={ r=TH.DANGER_R*0.12, g=TH.DANGER_G*0.06, b=TH.DANGER_B*0.06, a=1 },
+        border={ r=TH.DANGER_R*0.6,  g=TH.DANGER_G*0.3,  b=TH.DANGER_B*0.3,  a=1 },
+    })
+    ManualSave.makePanel(hdr, {
+        x=0, y=0, w=w, h=2,
+        bg={ r=TH.DANGER_R*0.9, g=TH.DANGER_G*0.5, b=TH.DANGER_B*0.4, a=1 }, border=false,
+    })
+    ManualSave.makeLabel(hdr, {
+        x=12, y=4, w=w-16, h=FHS,
+        text="[!] RECOVERY FLAGS",
+        r=TH.DANGER_R, g=TH.DANGER_G+0.1, b=TH.DANGER_B+0.05,
+    })
+    ManualSave.makeLabel(hdr, {
+        x=12, y=4+FHS+3, w=w-16, h=FHS,
+        text="Applied ONCE on the next load. Cannot be undone.",
+        r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.75,
+    })
+    ManualSave.makeButton(hdr, {
+        x=w-26-4, y=math.floor((hdrH - TH.BUTTON_HGT) / 2),
+        w=26, h=TH.BUTTON_HGT,
+        label="?", style="normal",
+        onClick = function()
+            if ManualSave.openHelpScreen then ManualSave.openHelpScreen("recovery") end
+        end,
+    })
+    ry = ry + hdrH + 2
+
+    -- Flag cards
+    local flagDefs = {
+        { key="wipeZombies",    label="Wipe zombies",          desc="Removes all zombies from the map on load.",
+          info = { popW=240, lines = {
+              { "Removes all zombies from the map",         "normal" },
+              { "when this save is loaded.",                "normal" },
+              { "",                                                   },
+              { "Useful if zombies are corrupted,",         "dim"    },
+              { "stuck, or blocking spawn.",                "dim"    },
+              { "",                                                   },
+              { "Cannot be undone after loading.",          "warn"   },
+          }},
+        },
+        { key="resetPlayerPos", label="Reset player position", desc="Teleports character to the world spawn point.",
+          info = { popW=248, lines = {
+              { "Teleports the player to the world",        "normal" },
+              { "spawn point on load.",                     "normal" },
+              { "",                                                   },
+              { "Useful if stuck in an unreachable area.",  "dim"    },
+          }},
+        },
+        { key="healPlayer",     label="Heal player",           desc="Restores health and removes all injuries.",
+          info = { popW=240, lines = {
+              { "Restores health to full and clears",       "normal" },
+              { "all injuries, moodles, and infections",    "normal" },
+              { "on load.",                                 "normal" },
+          }},
+        },
+        { key="resetWeather",   label="Reset weather",         desc="Clears weather back to clear-sky default.",
+          info = { popW=240, lines = {
+              { "Resets active weather to clear sky.",      "normal" },
+              { "",                                                   },
+              { "Useful if weather state is corrupted.",    "dim"    },
+          }},
+        },
+        { key="resetTime",      label="Reset time of day",     desc="Sets the in-game clock to the chosen preset.",
+          info = { popW=248, lines = {
+              { "Sets the in-game clock to the",            "normal" },
+              { "selected time preset on load.",            "normal" },
+              { "",                                                   },
+              { "Day count and calendar are not affected.", "dim"    },
+          }},
+        },
+    }
+    local infoSz    = 16
+    local cardH     = FHS * 2 + 12
+    local presetRow = nil
+
+    for _, fd in ipairs(flagDefs) do
+        local key, label, desc = fd.key, fd.label, fd.desc
+        ManualSave.makeToggleCard(parent, {
+            x=0, y=ry, w=w, h=cardH,
+            label    = label,
+            desc     = desc,
+            getValue = function() return flags[key] end,
+            onToggle = function()
+                flags[key] = not flags[key]
+                if key == "resetTime" and presetRow then
+                    presetRow:setVisible(flags.resetTime)
+                end
+            end,
+        })
+        ManualSave.makeInfoButton(parent, {
+            x = w - infoSz - 3,
+            y = ry + math.floor((cardH - infoSz) / 2),
+            sz = infoSz,
+            popW = fd.info.popW,
+            lines = fd.info.lines,
+        })
+        ry = ry + cardH + 2
+
+        if key == "resetTime" then
+            local rowH2 = btnH + 6
+            presetRow = ManualSave.makePanel(parent, {
+                x=0, y=ry, w=w, h=rowH2,
+                bg    ={ r=0.05, g=0.04, b=0.04, a=1 },
+                border={ r=TH.LINE_R*0.4, g=TH.LINE_G*0.4, b=TH.LINE_B*0.4, a=1 },
+            })
+            ManualSave.makeLabel(presetRow, {
+                x=10, y=math.floor((rowH2 - TH.FONT_HGT_SMALL) / 2), w=w-10, h=TH.FONT_HGT_SMALL,
+                text="Set time:",
+                r=TH.DIM_R, g=TH.DIM_G, b=TH.DIM_B, a=0.75,
+            })
+            local lblW  = getTextManager():MeasureStringX(UIFont.Small, "Set time: ") + 12
+            local pbY   = math.floor((rowH2 - btnH) / 2)
+            local preset = st.recoveryTimePreset or "dawn"
+            ManualSave.makeToolbar(presetRow, {
+                x=lblW, y=pbY, w=w - lblW, h=btnH, gap=4,
+                items = {
+                    { id="dawn",     label="Dawn",     kind="toggle", group="time", active=(preset=="dawn")     },
+                    { id="midday",   label="Midday",   kind="toggle", group="time", active=(preset=="midday")   },
+                    { id="dusk",     label="Dusk",     kind="toggle", group="time", active=(preset=="dusk")     },
+                    { id="midnight", label="Midnight", kind="toggle", group="time", active=(preset=="midnight") },
+                },
+                onToggle = function(id, _) st.recoveryTimePreset = id end,
+            })
+            presetRow:setVisible(flags.resetTime)
+            ry = ry + rowH2 + 2
+        end
+    end
+
+    -- LOAD WITH FLAGS button
+    ManualSave.makeButton(parent, {
+        x=0, y=ry, w=w, h=btnH,
+        label = "LOAD WITH FLAGS",
+        groups={"bat_required"},
+        onClick = function()
+            if ManualSave.SignalBus.isBatAlive() == false then return end
+            local anyActive = false
+            for _, v in pairs(flags) do if v then anyActive = true; break end end
+            if not anyActive then return end
+            local times = { dawn="05:00", midday="12:00", dusk="20:00", midnight="00:00" }
+            local lines = {}
+            if flags.wipeZombies    then table.insert(lines, "Wipe zombies")          end
+            if flags.resetPlayerPos then table.insert(lines, "Reset player position") end
+            if flags.healPlayer     then table.insert(lines, "Heal player")           end
+            if flags.resetWeather   then table.insert(lines, "Reset weather")         end
+            if flags.resetTime then
+                local preset = st.recoveryTimePreset or "dawn"
+                table.insert(lines, "Reset time  >  " .. (times[preset] or preset))
+            end
+            ManualSave.openConfirmDialog({
+                title       = "[!] Confirm recovery flags",
+                body        = table.concat(lines, "\n") .. "\n\nApplied once on load. Backup is not modified.",
+                confirm     = "Load with flags",
+                danger      = true,
+                helpSection = "recovery",
+                onConfirm = function()
+                    local safe = (m.slot or ""):gsub('[\\/:*?"<>|!]', "_"):gsub("%s+", "_")
+                    local active = {}
+                    if flags.wipeZombies    then table.insert(active, "WIPE_ZOMBIES")     end
+                    if flags.resetPlayerPos then table.insert(active, "RESET_PLAYER_POS") end
+                    if flags.healPlayer     then table.insert(active, "HEAL_PLAYER")      end
+                    if flags.resetWeather   then table.insert(active, "RESET_WEATHER")    end
+                    if flags.resetTime then
+                        table.insert(active, "RESET_TIME="..(st.recoveryTimePreset or "dawn"))
+                    end
+                    local fw = getFileWriter("ManualSaves_Flags_"..safe..".txt", true, false)
+                    if fw then
+                        fw:write("SLOT="  .. (m.slot or "") .. "\r\n")
+                        fw:write("FLAGS=" .. table.concat(active, ",") .. "\r\n")
+                        fw:close()
+                    end
+                    for k in pairs(flags) do flags[k] = false end
+                    ManualSave.closeMoreScreen()
+                    ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
+                end,
+            })
+        end,
+        render = function(ab)
+            local anyActive = false
+            for _, v in pairs(flags) do if v then anyActive = true; break end end
+            local over = false; pcall(function() over = ab:isMouseOver() end)
+            if anyActive then
+                local bgR = over and TH.DANGER_R*0.26 or TH.DANGER_R*0.14
+                local bgG = over and TH.DANGER_G*0.15 or TH.DANGER_G*0.08
+                local bgB = over and TH.DANGER_B*0.14 or TH.DANGER_B*0.08
+                ab:drawRect(0,0,ab.width,ab.height,1,bgR,bgG,bgB)
+                ab:drawRectBorder(0,0,ab.width,ab.height,1,
+                    TH.DANGER_R*0.9, TH.DANGER_G*0.5, TH.DANGER_B*0.4)
+            else
+                ab:drawRectBorder(0,0,ab.width,ab.height,0.5, TH.MUTED_R, TH.MUTED_G, TH.MUTED_B)
+            end
+            local fh = getTextManager():getFontHeight(UIFont.Small)
+            local tw = getTextManager():MeasureStringX(UIFont.Small, "LOAD WITH FLAGS")
+            local tr = anyActive and TH.DANGER_R       or TH.MUTED_R
+            local tg = anyActive and TH.DANGER_G+0.12  or TH.MUTED_G
+            local tb = anyActive and TH.DANGER_B+0.08  or TH.MUTED_B
+            local ta = anyActive and 1.0 or 0.6
+            ab:drawText("LOAD WITH FLAGS",
+                math.floor((ab.width-tw)/2), math.floor((ab.height-fh)/2),
+                tr, tg, tb, ta, UIFont.Small)
+        end,
+    })
+end
+
+print("[ManualSaveMod] UI/Base/Widgets/Sections/SaveOps.lua loaded.")
