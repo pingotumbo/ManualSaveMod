@@ -92,14 +92,15 @@ Events.OnGameStart.Add(function()
     ms.loadGameOption.prerender   = MainScreen.prerenderBottomPanelLabel
     bp:addChild(ms.loadGameOption)
 
-    -- Ensure our labels reflect translated text widths before normalization.
-    local saveW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnSave"))
-    local loadW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnLoad"))
-    ms.saveGameOption:setWidth(saveW + 20)
-    ms.loadGameOption:setWidth(loadW + 20)
+    -- Seed maxW from our labels' measured text so getWidth() unreliability can't shrink them.
+    local ourW = math.max(
+        getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnSave")),
+        getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnLoad"))) + 30
+    ms.saveGameOption:setWidth(ourW)
+    ms.loadGameOption:setWidth(ourW)
 
     -- Re-normalize all ISLabel widths to match vanilla
-    local maxW = 0
+    local maxW = ourW
     for _, child in pairs(bp:getChildren()) do
         if child.Type == "ISLabel" then maxW = math.max(maxW, child:getWidth()) end
     end
