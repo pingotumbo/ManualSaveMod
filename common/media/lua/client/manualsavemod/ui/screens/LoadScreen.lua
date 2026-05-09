@@ -23,21 +23,12 @@ function ManualSave.openLoadScreen(fromMainMenu)
     local d = ManualSave.makeScreenPanel({
         w=PW, h=PH,
         onKeyRelease = function(_, key)
-            if key == Keyboard.KEY_ESCAPE then
-                local st = ManualSave.LoadScreen._state
-                if st and st.renamingSlot then
-                    local fn = ManualSave.LoadScreen._commitRename
-                    if fn then fn(false) end
-                    return
-                end
-                ManualSave.closeLoadScreen()
-            end
             if key == Keyboard.KEY_RETURN then
                 local st = ManualSave.LoadScreen._state
                 if st and st.selected and not st.selected.CORRUPTED
                     and ManualSave.SignalBus.isBatAlive() ~= false then
                     local m = st.selected
-                    ManualSave.closeLoadScreen(true)
+                    ManualSave.closeLoadScreen()
                     ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
                 end
             end
@@ -113,7 +104,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
             local st = ManualSave.LoadScreen._state
             if not st or not st.selected or st.selected.CORRUPTED then return end
             local m = st.selected
-            ManualSave.closeLoadScreen(true)
+            ManualSave.closeLoadScreen()
             ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
         end,
     })
@@ -166,14 +157,11 @@ function ManualSave.openLoadScreen(fromMainMenu)
     d.open()
 end
 
--- skipEscMenu: pass true when closing to perform a load (avoids reopening the ESC menu
--- which would stall the load until the user presses ESC again).
-function ManualSave.closeLoadScreen(skipEscMenu)
+function ManualSave.closeLoadScreen()
     local d = ManualSave.LoadScreen._screen
     if not d then return end
     ManualSave.UI.clearGroup("bat_required")
-    local wasInGame    = getPlayer() ~= nil
-    local fromMainMenu = ManualSave.LoadScreen._state and ManualSave.LoadScreen._state.fromMainMenu
+    local wasInGame = getPlayer() ~= nil
     ManualSave.closeMoreScreen()
     if ManualSave.closeImportScreen then ManualSave.closeImportScreen() end
     d.close()
@@ -182,9 +170,6 @@ function ManualSave.closeLoadScreen(skipEscMenu)
     if wasInGame then
         setGameSpeed(1)
         setShowPausedMessage(true)
-        if not fromMainMenu and not skipEscMenu then
-            pcall(function() ToggleEscapeMenu(getCore():getKey("Main Menu")) end)
-        end
     end
 end
 

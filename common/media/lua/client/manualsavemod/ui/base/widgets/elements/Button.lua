@@ -85,6 +85,13 @@ function ManualSave.makeButton(parent, opts)
         return obj
     end
 
+    -- When a filled (primary) button is disabled, its dark text (designed for
+    -- the orange fill) becomes invisible on the dark panel background at 28% alpha.
+    -- Pre-compute a visible disabled text colour that works on any background.
+    local dtR = filled and TH.TEXT_R or tR
+    local dtG = filled and TH.TEXT_G or tG
+    local dtB = filled and TH.TEXT_B or tB
+
     btn.render = function(self2)
         local alpha = self2.enable and 1.0 or 0.28
         if filled then
@@ -117,7 +124,10 @@ function ManualSave.makeButton(parent, opts)
             self2:getTitle(),
             math.floor((self2.width  - tw) / 2),
             math.floor((self2.height - fh) / 2),
-            tR, tG, tB, alpha, UIFont.Small)
+            self2.enable and tR or dtR,
+            self2.enable and tG or dtG,
+            self2.enable and tB or dtB,
+            alpha, UIFont.Small)
     end
 
     if opts.onFocus      then btn.onFocus      = opts.onFocus      end

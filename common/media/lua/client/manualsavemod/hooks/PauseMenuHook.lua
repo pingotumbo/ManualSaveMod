@@ -8,6 +8,35 @@ ManualSave = ManualSave or {}
 local labelHgt       = getTextManager():getFontHeight(UIFont.Large) + 16
 local labelSeparator = 16
 
+-- Replace the original ToggleEscapeMenu event listener with a wrapper that
+-- intercepts ESC while our panels are open. We must Remove+Add because
+-- Events.OnKeyPressed holds the original function reference, not the global name.
+local _origToggleEsc = ToggleEscapeMenu
+Events.OnKeyPressed.Remove(_origToggleEsc)
+local function _escWrapper(key)
+    local menuKey = getCore():getKey("Main Menu")
+    local isEsc   = (menuKey ~= 0 and key == menuKey) or (menuKey == 0 and key == Keyboard.KEY_ESCAPE)
+    if isEsc then
+        if ManualSave.LoadScreen and ManualSave.LoadScreen._screen then
+            local st = ManualSave.LoadScreen._state
+            if st and st.renamingSlot then
+                local fn = ManualSave.LoadScreen._commitRename
+                if fn then fn(false) end
+            else
+                ManualSave.closeLoadScreen()
+            end
+            return
+        end
+        if ManualSave._saveScreenOpen and ManualSave._saveScreenOpen() then
+            ManualSave.closeSaveScreen()
+            return
+        end
+    end
+    _origToggleEsc(key)
+end
+ToggleEscapeMenu = _escWrapper
+Events.OnKeyPressed.Add(_escWrapper)
+
 local function onSaveGameClick(_, _, _)
     getSoundManager():playUISound("UIActivateMainMenuItem")
     ToggleEscapeMenu(getCore():getKey("Main Menu"))
@@ -17,13 +46,7 @@ end
 local function onLoadGameClick(_, _, _)
     getSoundManager():playUISound("UIActivateMainMenuItem")
     ToggleEscapeMenu(getCore():getKey("Main Menu"))
-    -- Defer by one frame so ToggleEscapeMenu fully settles before we add to UIManager
-    local handler
-    handler = function()
-        Events.OnPreUIDraw.Remove(handler)
-        ManualSave.openLoadScreen(false)   -- in-game: no IMPORT button
-    end
-    Events.OnPreUIDraw.Add(handler)
+    ManualSave.openLoadScreen(false)
 end
 
 Events.OnGameStart.Add(function()
@@ -82,6 +105,13 @@ Events.OnGameStart.Add(function()
     print("[ManualSaveMod] Pause menu: SAVE GAME + LOAD GAME injected.")
 end)
 
+-- Patch vanilla CreditsScreen.onResolutionChange: self.richText is nil when
+-- the Credits screen was never opened (PZ B42 bug — missing nil guard).
+local _origCreditsORC = CreditsScreen.onResolutionChange
+CreditsScreen.onResolutionChange = function(self)
+    if self.richText then _origCreditsORC(self) end
+end
+
 -- Close all open mod panels when the player changes screen resolution.
 -- The panels are sized at construction time; a resolution change leaves them
 -- stale. Closing them is instant and safe — the user simply reopens them.
@@ -93,4 +123,4 @@ Events.OnResolutionChange.Add(function()
     pcall(function() if ManualSave.closeSaveScreen   then ManualSave.closeSaveScreen()   end end)
 end)
 
-print("[ManualSaveMod] Hooks/PauseMenuHook.lua loaded.")
+print("[ManualSaveMod] Hooks/PauseMenuHook.lua loaded. ESC wrapper installed.")

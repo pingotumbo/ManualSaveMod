@@ -1,12 +1,12 @@
 # ============================================================
-# ManualSave_Watcher.ps1 v3.0
+# ManualSave_Watcher.ps1 v4.0
 # External watcher for ManualSaveMod (Project Zomboid B42)
+# Screenshot logic inlined — ManualSave_Screenshot.ps1 no longer needed.
 # ============================================================
 #Requires -Version 5.1
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-$MOD_DIR       = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LuaDir        = "$env:USERPROFILE\Zomboid\Lua"
 $SIGNAL        = "$LuaDir\ManualSave_Signal.txt"
 $INDEX         = "$LuaDir\ManualSave_Index.txt"
@@ -16,6 +16,7 @@ $BACKUPS       = "$env:USERPROFILE\Zomboid\ManualSaves"
 $THUMBS        = "$env:USERPROFILE\Zomboid\Saves\ManualSave_Thumbs"
 $SCREEN_REQ    = "$LuaDir\ManualSave_ScreenReq.txt"
 $SCREEN_DONE   = "$LuaDir\ManualSave_ScreenDone.txt"
+$SCREEN_LOG    = "$LuaDir\ManualSave_ScreenLog.txt"
 $THUMB_PENDING = "$LuaDir\ManualSave_ThumbPending.png"
 $LOCK_FILE     = "$LuaDir\ManualSave_Watcher.lock"
 $HEARTBEAT     = "$LuaDir\ManualSave_Heartbeat.txt"
@@ -63,6 +64,26 @@ foreach ($T in (Get-ChildItem "$SAVES\MSM_THUMB_*" -Directory -EA SilentlyContin
 Write-Host "[ManualSave_Watcher] Watching for signals... (press Ctrl+C to stop)"
 Write-Host ""
 
+# ── Win32 / GDI setup (compiled once at startup) ──────────────
+
+Add-Type -AssemblyName System.Drawing
+
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MSM_Win {
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern int  GetWindowLong(IntPtr h, int idx);
+    [DllImport("user32.dll")] public static extern int  SetWindowLong(IntPtr h, int idx, int val);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern int  GetSystemMetrics(int nIndex);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+}
+"@
+[MSM_Win]::SetProcessDPIAware() | Out-Null
+
 # ── Helpers ───────────────────────────────────────────────────
 
 function Parse-Signal($path) {
@@ -108,7 +129,6 @@ function Get-FolderSizeMB($path) {
 }
 
 function New-Placeholder($dst) {
-    Add-Type -AssemblyName System.Drawing
     $bmp = New-Object System.Drawing.Bitmap(320, 180)
     $g   = [System.Drawing.Graphics]::FromImage($bmp)
     $g.Clear([System.Drawing.Color]::FromArgb(20, 18, 16))
@@ -117,9 +137,95 @@ function New-Placeholder($dst) {
     $g.Dispose(); $bmp.Dispose()
 }
 
+function Get-PZWindowRect($hwnd) {
+    $r = New-Object MSM_Win+RECT
+    [MSM_Win]::GetWindowRect($hwnd, [ref]$r) | Out-Null
+    return $r
+}
+
+function Invoke-Screenshot($outputPath) {
+    "$(Get-Date -f 'HH:mm:ss') --- Screenshot START ---" | Add-Content $SCREEN_LOG
+
+    $proc = Get-Process ProjectZomboid64 -EA SilentlyContinue | Select-Object -First 1
+    if (-not $proc -or $proc.MainWindowHandle -eq [IntPtr]::Zero) {
+        "$(Get-Date -f 'HH:mm:ss') ERROR: ProjectZomboid64 not found" | Add-Content $SCREEN_LOG
+        return $false
+    }
+    $hwnd = $proc.MainWindowHandle
+
+    $opts         = if (Test-Path "$env:USERPROFILE\Zomboid\options.ini") { Get-Content "$env:USERPROFILE\Zomboid\options.ini" } else { @() }
+    $pzFullscreen = [bool]($opts -match "^fullScreen=true$")
+    $pzBorderless = [bool]($opts -match "^borderless=true$")
+    $needsSwitch  = $pzFullscreen -and -not $pzBorderless
+    "$(Get-Date -f 'HH:mm:ss') fullScreen=$pzFullscreen borderless=$pzBorderless needsSwitch=$needsSwitch" | Add-Content $SCREEN_LOG
+
+    $GWL_STYLE          = -16
+    $GWL_EXSTYLE        = -20
+    $WS_OVERLAPPEDWINDOW = 0x00CF0000
+    $WS_VISIBLE          = 0x10000000
+    $SWP_FLAGS           = 0x0040 -bor 0x0020   # SWP_SHOWWINDOW | SWP_FRAMECHANGED
+
+    if ($needsSwitch) {
+        $origStyle   = [MSM_Win]::GetWindowLong($hwnd, $GWL_STYLE)
+        $origExStyle = [MSM_Win]::GetWindowLong($hwnd, $GWL_EXSTYLE)
+        $origRect    = Get-PZWindowRect $hwnd
+        $SM_CXFRAME   = [MSM_Win]::GetSystemMetrics(32)
+        $SM_CYFRAME   = [MSM_Win]::GetSystemMetrics(33)
+        $SM_CYCAPTION = [MSM_Win]::GetSystemMetrics(4)
+        $SM_CXPADDED  = [MSM_Win]::GetSystemMetrics(92)
+        $borderX = $SM_CXFRAME + $SM_CXPADDED
+        $borderY = $SM_CYFRAME + $SM_CXPADDED
+        $offX    = $borderX
+        $offY    = $SM_CYCAPTION + $borderY
+        $scrW = $origRect.Right  - $origRect.Left
+        $scrH = $origRect.Bottom - $origRect.Top
+        [MSM_Win]::SetWindowLong($hwnd, $GWL_STYLE, $WS_OVERLAPPEDWINDOW -bor $WS_VISIBLE) | Out-Null
+        [MSM_Win]::SetWindowPos($hwnd, [IntPtr]::Zero,
+            ($origRect.Left - $offX), ($origRect.Top - $offY),
+            ($scrW + $offX * 2), ($scrH + $offY + $borderY), $SWP_FLAGS) | Out-Null
+        "$(Get-Date -f 'HH:mm:ss') switched to windowed - border=${SM_CXFRAME} caption=${SM_CYCAPTION}" | Add-Content $SCREEN_LOG
+        Start-Sleep -Milliseconds 150
+    }
+
+    if ($needsSwitch) {
+        $cx = $origRect.Left; $cy = $origRect.Top; $w = $scrW; $h = $scrH
+    } else {
+        $r = Get-PZWindowRect $hwnd
+        $cx = $r.Left; $cy = $r.Top; $w = $r.Right - $r.Left; $h = $r.Bottom - $r.Top
+    }
+    "$(Get-Date -f 'HH:mm:ss') capture rect: ${w}x${h} at ($cx,$cy)" | Add-Content $SCREEN_LOG
+
+    $dir = [System.IO.Path]::GetDirectoryName($outputPath)
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $g   = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($cx, $cy, 0, 0, (New-Object System.Drawing.Size($w, $h)))
+    $g.Dispose()
+
+    $saved = $false
+    for ($i = 0; $i -lt 5 -and -not $saved; $i++) {
+        try   { $bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png); $saved = $true }
+        catch { Start-Sleep -Milliseconds 100 }
+    }
+    $bmp.Dispose()
+
+    if ($needsSwitch) {
+        [MSM_Win]::SetWindowLong($hwnd, $GWL_STYLE,   $origStyle)   | Out-Null
+        [MSM_Win]::SetWindowLong($hwnd, $GWL_EXSTYLE, $origExStyle) | Out-Null
+        [MSM_Win]::SetWindowPos($hwnd, [IntPtr]::Zero,
+            $origRect.Left, $origRect.Top,
+            ($origRect.Right - $origRect.Left), ($origRect.Bottom - $origRect.Top), $SWP_FLAGS) | Out-Null
+        "$(Get-Date -f 'HH:mm:ss') fullscreen restored" | Add-Content $SCREEN_LOG
+    }
+
+    "$(Get-Date -f 'HH:mm:ss') saved=$saved --- Screenshot END ---" | Add-Content $SCREEN_LOG
+    return $saved
+}
+
 # ── Main polling loop ─────────────────────────────────────────
 while ($true) {
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 100
     $HB++
     Set-Content $HEARTBEAT $HB
 
@@ -128,11 +234,11 @@ while ($true) {
         Remove-Item $SCREEN_REQ -Force
         if (Test-Path $THUMB_PENDING) { Remove-Item $THUMB_PENDING -Force }
         Write-Host "[ManualSave_Watcher] Screenshot request received."
-        & powershell -NoProfile -NonInteractive -WindowStyle Hidden -File "$MOD_DIR\ManualSave_Screenshot.ps1" $THUMB_PENDING
-        if ((Test-Path $THUMB_PENDING) -and ((Get-Item $THUMB_PENDING).Length -eq 0)) {
-            Write-Host "[ManualSave_Watcher] WARNING: Empty thumbnail, retrying..."
-            Start-Sleep -Seconds 1
-            & powershell -NoProfile -NonInteractive -WindowStyle Hidden -File "$MOD_DIR\ManualSave_Screenshot.ps1" $THUMB_PENDING
+        $ok = Invoke-Screenshot $THUMB_PENDING
+        if (-not $ok -or -not (Test-Path $THUMB_PENDING) -or (Get-Item $THUMB_PENDING -EA SilentlyContinue).Length -eq 0) {
+            Write-Host "[ManualSave_Watcher] WARNING: Screenshot failed or empty, retrying..."
+            Start-Sleep -Milliseconds 500
+            $ok = Invoke-Screenshot $THUMB_PENDING
         }
         Set-Content $SCREEN_DONE "DONE"
         Write-Host "[ManualSave_Watcher] Screenshot captured."

@@ -8,16 +8,27 @@
 
 ManualSave = ManualSave or {}
 
-local W, H = 360, 210
+local W       = 360
 local _screen = nil  -- open instance; nil when closed
 
 -- ── Public API ────────────────────────────────────────────────────────────────
+
+function ManualSave._saveScreenOpen() return _screen ~= nil end
 
 -- Opens the save screen. No-op if already open.
 function ManualSave.openSaveScreen()
     if _screen then return end
 
     local TH = ManualSave.Theme
+
+    -- Compute H to fit content at any font scale (avoids overlap at 1440p+)
+    local H = (TH.FONT_HGT_LARGE + 22)       -- title bar
+            + TH.PAD                           -- gap below title
+            + TH.FONT_HGT_SMALL + TH.GAP      -- "Save name:" label
+            + TH.BUTTON_HGT + TH.GAP          -- name input
+            + TH.BUTTON_HGT + TH.GAP          -- toggle row
+            + TH.FONT_HGT_SMALL + 4           -- status / warning label
+            + TH.BUTTON_HGT + TH.PAD          -- buttons row + bottom padding
 
     local d = ManualSave.makeFloatingPanel({
         w=W, h=H,

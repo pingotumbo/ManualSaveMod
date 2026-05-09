@@ -234,7 +234,7 @@ function ManualSave.makeSaveList(parent, opts)
             if not st or not st.selected or st.selected.CORRUPTED then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
             local m = st.selected
-            ManualSave.closeLoadScreen(true)
+            ManualSave.closeLoadScreen()
             ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
         end,
     })

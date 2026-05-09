@@ -76,7 +76,12 @@ function ManualSave.makeScreenPanel(opts)
     if opts.onFocus      then inner.onFocus      = opts.onFocus      end
     if opts.onLostFocus  then inner.onLostFocus  = opts.onLostFocus  end
     if opts.onKeyPressed then inner.onKeyPressed = opts.onKeyPressed end
-    if opts.onKeyRelease then inner.onKeyRelease = opts.onKeyRelease end
+    if opts.onKeyRelease then
+        -- Key events in PZ go to the topmost UIManager element (outer).
+        -- Forward them to the opts handler so the load screen can handle ESC etc.
+        outer.onKeyRelease = function(_, key) opts.onKeyRelease(_, key) end
+        inner.onKeyRelease = opts.onKeyRelease
+    end
     if opts.update       then inner.update       = opts.update       end
 
     if opts.onClose then obj.onClose(opts.onClose) end
