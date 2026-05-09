@@ -8,7 +8,6 @@
 
 ManualSave = ManualSave or {}
 
-local W       = 360
 local _screen = nil  -- open instance; nil when closed
 
 -- ── Public API ────────────────────────────────────────────────────────────────
@@ -20,6 +19,16 @@ function ManualSave.openSaveScreen()
     if _screen then return end
 
     local TH = ManualSave.Theme
+
+    -- Button widths computed from translated text so any language fits.
+    -- The save button toggles between Full/Quick labels — take the wider one.
+    local backW = ManualSave.textBtnW(getText("UI_MSM_Common_BtnBack"), 60)
+    local saveW = math.max(
+        ManualSave.textBtnW(getText("UI_MSM_Save_BtnFullSave"),  90),
+        ManualSave.textBtnW(getText("UI_MSM_Save_BtnQuickSave"), 90))
+    -- Quick-Save toggle toolbar: wide enough for its label.
+    local toolW = math.max(80, getTextManager():MeasureStringX(UIFont.Small, getText("UI_MSM_Save_BtnQuickSave")) + 16)
+    local W = math.max(360, TH.PAD * 2 + 26 + TH.GAP + backW + TH.GAP + saveW)
 
     -- Compute H to fit content at any font scale (avoids overlap at 1440p+)
     local H = (TH.FONT_HGT_LARGE + 22)       -- title bar
@@ -66,14 +75,13 @@ function ManualSave.openSaveScreen()
     -- Quick Save toggle + "?" info button
     local toggleY = y0 + TH.FONT_HGT_SMALL + TH.GAP + TH.BUTTON_HGT + TH.GAP
     ManualSave.makeToolbar(p, {
-        x = TH.PAD, y = toggleY, w = 108, h = TH.BUTTON_HGT,
+        x = TH.PAD, y = toggleY, w = toolW, h = TH.BUTTON_HGT,
         items    = { { id="quick", label=getText("UI_MSM_Save_BtnQuickSave"), kind="toggle" } },
         onToggle = function(_, active) isQuick = active end,
     })
 
     -- Buttons row
     local btnY = H - TH.BUTTON_HGT - TH.PAD
-    local btnW = 110
 
     ManualSave.makeButton(p, {
         x = TH.PAD, y = btnY, w = 26, h = TH.BUTTON_HGT,
@@ -84,16 +92,16 @@ function ManualSave.openSaveScreen()
     })
 
     ManualSave.makeButton(p, {
-        x = W - TH.PAD - btnW * 2 - TH.GAP,
-        y = btnY, w = 80, h = TH.BUTTON_HGT,
+        x = W - TH.PAD - saveW - TH.GAP - backW,
+        y = btnY, w = backW, h = TH.BUTTON_HGT,
         label = getText("UI_MSM_Common_BtnBack"), style = "normal",
         onClick = function() ManualSave.closeSaveScreen() end,
     })
 
     -- Save button — label stays in sync with isQuick via update
     ManualSave.makeButton(p, {
-        x = W - TH.PAD - btnW,
-        y = btnY, w = btnW, h = TH.BUTTON_HGT,
+        x = W - TH.PAD - saveW,
+        y = btnY, w = saveW, h = TH.BUTTON_HGT,
         label = getText("UI_MSM_Save_BtnFullSave"), style = "primary",
         groups = {"bat_required"},
         update = function(self2) self2:setTitle(isQuick and getText("UI_MSM_Save_BtnQuickSave") or getText("UI_MSM_Save_BtnFullSave")) end,
@@ -131,7 +139,7 @@ function ManualSave.openSaveScreen()
 
     -- Info button: Quick Save explanation
     local infoSz = 20
-    local infoX  = TH.PAD + 108 + TH.GAP + 6
+    local infoX  = TH.PAD + toolW + TH.GAP + 6
     local infoY  = toggleY + math.floor((TH.BUTTON_HGT - infoSz) / 2)
     ManualSave.makeInfoButton(p, {
         x = infoX, y = infoY, sz = infoSz, popW = 292,

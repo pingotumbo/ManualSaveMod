@@ -50,7 +50,7 @@ function ManualSave.makeLoadHeader(parent, opts)
         r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B,
     })
 
-    local helpBtnW = 52
+    local helpBtnW = ManualSave.textBtnW(getText("UI_MSM_LoadHeader_BtnHelp"), 50)
     ManualSave.makeButton(parent, {
         x=w - TH.PAD - helpBtnW, y=math.floor((h - TH.BUTTON_HGT) / 2),
         w=helpBtnW, h=TH.BUTTON_HGT,

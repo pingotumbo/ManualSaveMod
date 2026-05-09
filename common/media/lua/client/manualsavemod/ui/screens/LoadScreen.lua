@@ -73,16 +73,30 @@ function ManualSave.openLoadScreen(fromMainMenu)
         thumbH=260, actW=84,
     })
 
-    -- Footer
+    -- Footer — all widths derived from translated text.
     local footerY = PH - TH.BUTTON_HGT - TH.PAD
+    local backW   = ManualSave.textBtnW(getText("UI_MSM_Common_BtnBack"),  70)
+    local importW = ManualSave.textBtnW(getText("UI_MSM_Load_BtnImport"),  80)
+    local moreW   = ManualSave.textBtnW(getText("UI_MSM_Load_BtnMore"),    70)
+    local loadW   = ManualSave.textBtnW(getText("UI_MSM_Load_BtnLoad"),   120)
+
+    -- Left-side positions
+    local backX   = TH.PAD
+    local importX = backX + backW + TH.GAP
+    -- Right-side positions
+    local loadX   = PW - TH.PAD - loadW
+    local moreX   = loadX - TH.GAP - moreW
+    -- Info / warning zone between the two groups (uses import offset even when hidden)
+    local infoX   = importX + importW + TH.GAP
+
     ManualSave.makeButton(p, {
-        x=TH.PAD, y=footerY, w=90, h=TH.BUTTON_HGT,
+        x=backX, y=footerY, w=backW, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Common_BtnBack"), style="normal",
         onClick = function() ManualSave.closeLoadScreen() end,
     })
     if fromMainMenu then
         ManualSave.makeButton(p, {
-            x=TH.PAD + 90 + TH.GAP, y=footerY, w=100, h=TH.BUTTON_HGT,
+            x=importX, y=footerY, w=importW, h=TH.BUTTON_HGT,
             label=getText("UI_MSM_Load_BtnImport"), style="accent",
             groups={"bat_required"},
             onClick = function()
@@ -92,12 +106,12 @@ function ManualSave.openLoadScreen(fromMainMenu)
         })
     end
     ManualSave.LoadScreen._btnMore = ManualSave.makeButton(p, {
-        x=PW - TH.PAD - 100 - TH.GAP - 160, y=footerY, w=100, h=TH.BUTTON_HGT,
+        x=moreX, y=footerY, w=moreW, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Load_BtnMore"), style="normal", enabled=false,
         onClick = function() ManualSave.openMoreScreen() end,
     })
     ManualSave.LoadScreen._btnLoad = ManualSave.makeButton(p, {
-        x=PW - TH.PAD - 160, y=footerY, w=160, h=TH.BUTTON_HGT,
+        x=loadX, y=footerY, w=loadW, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Load_BtnLoad"), style="primary", enabled=false,
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
@@ -110,7 +124,6 @@ function ManualSave.openLoadScreen(fromMainMenu)
     })
 
     -- "?" tutorial-hook button: left of warning, shown when BAT offline
-    local infoX   = TH.PAD + 90 + TH.GAP + 100 + TH.GAP
     local infoBtn = ManualSave.makeButton(p, {
         x=infoX, y=footerY, w=26, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Common_BtnHelp"), style="normal",
@@ -124,7 +137,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
 
     -- Warning label (shown when BAT offline)
     local warnX     = infoX + 26 + TH.GAP
-    local warnRight = PW - TH.PAD - 100 - TH.GAP - 160  -- left edge of More button
+    local warnRight = moreX  -- left edge of More button
     local warnH     = TH.BUTTON_HGT
     local warnPanel = ManualSave.makeLabel(p, {
         x=warnX, y=footerY, w=warnRight - warnX - TH.GAP, h=warnH,

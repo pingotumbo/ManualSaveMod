@@ -22,7 +22,10 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
     local rightX   = opts.rightX
     local rightW   = opts.rightW
     local thumbH   = opts.thumbH
-    local actW     = opts.actW
+    local actW = math.max(opts.actW or 0,
+        ManualSave.textBtnW(getText("UI_MSM_Detail_BtnRename"),    60),
+        ManualSave.textBtnW(getText("UI_MSM_Detail_BtnDuplicate"), 60),
+        ManualSave.textBtnW(getText("UI_MSM_Detail_BtnDelete"),    60))
     local detailY  = contentY + TH.PAD + thumbH + TH.PAD
     local detailH  = contentH - thumbH - TH.PAD * 3
 

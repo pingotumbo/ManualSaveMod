@@ -41,15 +41,24 @@ function ManualSave.makeToolbar(parent, opts)
         }
     end
 
-    local p = ISPanel:new(opts.x, opts.y, opts.w, opts.h)
+    -- Compute minimum button width from label text before creating the panel.
+    -- Items with arrowFn need extra space for the sort arrow (+9px).
+    local totalGap = gap * math.max(0, #opts.items - 1)
+    local minBtnW = 0
+    for _, item in ipairs(opts.items) do
+        local tw = getTextManager():MeasureStringX(UIFont.Small, item.label or "")
+        local aw = item.arrowFn and 9 or 0
+        minBtnW = math.max(minBtnW, tw + aw + 16)
+    end
+    local evenSplit = math.floor((opts.w - totalGap) / math.max(1, #opts.items))
+    local btnW    = math.max(minBtnW, evenSplit)
+    local totalW  = btnW * #opts.items + totalGap
+
+    local p = ISPanel:new(opts.x, opts.y, math.max(opts.w, totalW), opts.h)
     p.backgroundColor = { r=0, g=0, b=0, a=0 }
     p.borderColor     = { r=0, g=0, b=0, a=0 }
     p:initialise()
     p:instantiate()
-
-    -- Layout: divide width evenly if no explicit widths, else use label-fit
-    local totalGap = gap * math.max(0, #opts.items - 1)
-    local btnW = math.floor((opts.w - totalGap) / math.max(1, #opts.items))
 
     local cx = 0
     for _, item in ipairs(opts.items) do
@@ -121,8 +130,8 @@ function ManualSave.makeToolbar(parent, opts)
             local tw   = getTextManager():MeasureStringX(UIFont.Small, self2:getTitle())
             local arrowDir = isActive and item.arrowFn and item.arrowFn()
             local arrowW = arrowDir and 9 or 0   -- 5px triangle + 4px gap
-            local totalW = tw + arrowW
-            local tx = math.floor((self2.width - totalW) / 2)
+            local contentW = tw + arrowW
+            local tx = math.floor((self2.width - contentW) / 2)
             self2:drawText(
                 self2:getTitle(),
                 tx,
@@ -143,7 +152,7 @@ function ManualSave.makeToolbar(parent, opts)
 
     if parent then parent:addChild(p) end
 
-    local obj = { panel = p }
+    local obj = { panel = p, width = math.max(opts.w, totalW) }
 
     ---@param id string
     ---@param v boolean

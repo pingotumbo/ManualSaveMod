@@ -182,7 +182,12 @@ function ManualSave.makeSaveList(parent, opts)
 
     -- ── UI ────────────────────────────────────────────────────────────────────
 
-    local toolbarW = 228
+    -- Toolbar width: at least wide enough for the widest sort label + arrow + padding.
+    local maxSortW = math.max(
+        getTextManager():MeasureStringX(UIFont.Small, getText("UI_MSM_List_SortDate")),
+        getTextManager():MeasureStringX(UIFont.Small, getText("UI_MSM_List_SortName")),
+        getTextManager():MeasureStringX(UIFont.Small, getText("UI_MSM_List_SortSize")))
+    local toolbarW = math.max(228, (maxSortW + 9 + 16) * 3 + TH.GAP * 2)
     ManualSave.makeToolbar(parent, {
         x=TH.PAD, y=toolY, w=toolbarW, h=TH.BUTTON_HGT,
         items = {

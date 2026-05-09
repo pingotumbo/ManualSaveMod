@@ -36,4 +36,11 @@ function ManualSave.nextCopyName(baseSlot, saves)
     return base
 end
 
+-- Returns the minimum button pixel width to display label with standard horizontal padding.
+-- label: already-translated string.  minW: optional hard floor.
+function ManualSave.textBtnW(label, minW)
+    local tw = getTextManager():MeasureStringX(UIFont.Small, label or "")
+    return math.max(minW or 0, tw + 24)
+end
+
 print("[ManualSaveMod] UI/Base/Config/Utils.lua loaded.")

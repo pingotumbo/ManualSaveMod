@@ -5,6 +5,8 @@
   "UI_MSM_Common_BtnRename": "Rinomina",
   "UI_MSM_Common_WarnOffline": "Watcher offline - operazioni disabilitate.",
   "UI_MSM_MainMenu_BtnLoad": "CARICA SALVATAGGIO MANUALE",
+  "UI_MSM_PauseMenu_BtnSave": "SALVA PARTITA",
+  "UI_MSM_PauseMenu_BtnLoad": "CARICA PARTITA",
   "UI_MSM_Save_Title": "Salva Partita",
   "UI_MSM_Save_LabelName": "Nome salvataggio:",
   "UI_MSM_Save_Placeholder": "Inserisci nome salvataggio",

@@ -23,7 +23,13 @@ ManualSave = ManualSave or {}
 --
 function ManualSave.openConfirmDialog(opts)
     local TH = ManualSave.Theme
-    local W, H = 360, 160
+    local confirmLabel = opts.confirm or getText("UI_MSM_Dialog_BtnConfirm")
+    local cancelLabel  = opts.cancel  or getText("UI_MSM_Common_BtnCancel")
+    local btnW = math.max(
+        ManualSave.textBtnW(confirmLabel, 80),
+        ManualSave.textBtnW(cancelLabel,  80))
+    local W = math.max(360, TH.PAD * 2 + btnW * 2 + TH.GAP)
+    local H = 160
 
     local d = ManualSave.makeModalPanel({ w=W, h=H })
     local p = d.panel
@@ -49,7 +55,6 @@ function ManualSave.openConfirmDialog(opts)
 
     local btnY = H - 38
     local btnH = TH.BUTTON_HGT
-    local btnW = 110
 
     ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD),
@@ -109,7 +114,13 @@ end
 --
 function ManualSave.openNameInputDialog(opts)
     local TH = ManualSave.Theme
-    local W, H = 300, 110
+    local confirmLabel = opts.confirm or "OK"
+    local cancelLabel  = getText("UI_MSM_Common_BtnCancel")
+    local btnW = math.max(
+        ManualSave.textBtnW(confirmLabel, 60),
+        ManualSave.textBtnW(cancelLabel,  60))
+    local W = math.max(300, TH.PAD * 2 + btnW * 2 + TH.GAP)
+    local H = 110
 
     local d = ManualSave.makePopupPanel({
         w = W, h = H,
@@ -137,7 +148,6 @@ function ManualSave.openNameInputDialog(opts)
     })
 
     local btnY = inputY + TH.BUTTON_HGT + TH.GAP
-    local btnW = 80
 
     ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD),
@@ -188,7 +198,14 @@ end
 --
 function ManualSave.openFullSaveDialog(opts)
     local TH = ManualSave.Theme
-    local W, H = 420, 158
+    local cancelLabel = getText("UI_MSM_Common_BtnCancel")
+    local exitLabel   = getText("UI_MSM_Dialog_BtnSaveExit")
+    local returnLabel = getText("UI_MSM_Dialog_BtnSaveReturn")
+    local cancelW = ManualSave.textBtnW(cancelLabel, 60)
+    local exitW   = ManualSave.textBtnW(exitLabel,   80)
+    local returnW = ManualSave.textBtnW(returnLabel, 90)
+    local W = math.max(420, TH.PAD * 2 + cancelW + TH.GAP + exitW + TH.GAP + returnW)
+    local H = 158
 
     local d = ManualSave.makeModalPanel({ w=W, h=H })
     local p = d.panel
@@ -205,25 +222,27 @@ function ManualSave.openFullSaveDialog(opts)
         ManualSave.Draw.separator(self2, 0, H - 48, W, 0.4)
     end
 
-    local btnH = TH.BUTTON_HGT
-    local btnY = H - btnH - TH.PAD
+    local btnH     = TH.BUTTON_HGT
+    local btnY     = H - btnH - TH.PAD
+    local returnX  = W - TH.PAD - returnW
+    local exitX    = returnX - TH.GAP - exitW
 
     ManualSave.makeButton(p, {
-        x=TH.PAD, y=btnY, w=80, h=btnH,
-        label=getText("UI_MSM_Common_BtnCancel"), style="normal",
+        x=TH.PAD, y=btnY, w=cancelW, h=btnH,
+        label=cancelLabel, style="normal",
         onClick=function() d.close() end,
     })
     ManualSave.makeButton(p, {
-        x=W - TH.PAD - 220, y=btnY, w=104, h=btnH,
-        label=getText("UI_MSM_Dialog_BtnSaveExit"), style="danger",
+        x=exitX, y=btnY, w=exitW, h=btnH,
+        label=exitLabel, style="danger",
         onClick=function()
             d.close()
             if opts.onExit then pcall(opts.onExit) end
         end,
     })
     ManualSave.makeButton(p, {
-        x=W - TH.PAD - 110, y=btnY, w=110, h=btnH,
-        label=getText("UI_MSM_Dialog_BtnSaveReturn"), style="primary",
+        x=returnX, y=btnY, w=returnW, h=btnH,
+        label=returnLabel, style="primary",
         onClick=function()
             d.close()
             if opts.onReturn then pcall(opts.onReturn) end

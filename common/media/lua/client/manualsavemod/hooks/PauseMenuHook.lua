@@ -73,7 +73,7 @@ Events.OnGameStart.Add(function()
     end
 
     -- "SAVE GAME" at old exitY
-    ms.saveGameOption = ISLabel:new(labelX, exitY, labelHgt, "SAVE GAME", 1, 1, 1, 1, UIFont.Large, true)
+    ms.saveGameOption = ISLabel:new(labelX, exitY, labelHgt, getText("UI_MSM_PauseMenu_BtnSave"), 1, 1, 1, 1, UIFont.Large, true)
     ms.saveGameOption.internal    = "MANUALSAVE_SAVE"
     ms.saveGameOption:initialise()
     ms.saveGameOption.onMouseDown = onSaveGameClick
@@ -83,7 +83,7 @@ Events.OnGameStart.Add(function()
     bp:addChild(ms.saveGameOption)
 
     -- "LOAD GAME" one step below
-    ms.loadGameOption = ISLabel:new(labelX, exitY + shift, labelHgt, "LOAD GAME", 1, 1, 1, 1, UIFont.Large, true)
+    ms.loadGameOption = ISLabel:new(labelX, exitY + shift, labelHgt, getText("UI_MSM_PauseMenu_BtnLoad"), 1, 1, 1, 1, UIFont.Large, true)
     ms.loadGameOption.internal    = "MANUALSAVE_LOAD"
     ms.loadGameOption:initialise()
     ms.loadGameOption.onMouseDown = onLoadGameClick
@@ -91,6 +91,12 @@ Events.OnGameStart.Add(function()
     ms.loadGameOption.fade:setFadeIn(false)
     ms.loadGameOption.prerender   = MainScreen.prerenderBottomPanelLabel
     bp:addChild(ms.loadGameOption)
+
+    -- Ensure our labels reflect translated text widths before normalization.
+    local saveW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnSave"))
+    local loadW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnLoad"))
+    ms.saveGameOption:setWidth(saveW + 20)
+    ms.loadGameOption:setWidth(loadW + 20)
 
     -- Re-normalize all ISLabel widths to match vanilla
     local maxW = 0

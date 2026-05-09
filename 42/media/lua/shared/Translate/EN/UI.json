@@ -5,6 +5,8 @@
   "UI_MSM_Common_BtnRename": "Rename",
   "UI_MSM_Common_WarnOffline": "Watcher offline - operations disabled.",
   "UI_MSM_MainMenu_BtnLoad": "LOAD MANUAL SAVE",
+  "UI_MSM_PauseMenu_BtnSave": "SAVE GAME",
+  "UI_MSM_PauseMenu_BtnLoad": "LOAD GAME",
   "UI_MSM_Save_Title": "Save Game",
   "UI_MSM_Save_LabelName": "Save name:",
   "UI_MSM_Save_Placeholder": "Enter save name",

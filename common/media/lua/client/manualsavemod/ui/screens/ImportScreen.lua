@@ -57,8 +57,18 @@ function ManualSave.openImportScreen()
     if _importing then return end
 
     local TH    = ManualSave.Theme
-    local W, H  = 600, 480
     local PAD   = TH.PAD
+
+    -- Footer button widths from translated text.
+    local cancelW     = ManualSave.textBtnW(getText("UI_MSM_Common_BtnCancel"),        60)
+    local selectAllW  = ManualSave.textBtnW(getText("UI_MSM_Import_BtnSelectAll"),     70)
+    local unimportedW = ManualSave.textBtnW(getText("UI_MSM_Import_BtnUnimported"),    80)
+    local importBtnW  = ManualSave.textBtnW(getText("UI_MSM_Import_BtnImport"),       120)
+    -- Left group: Cancel + SelectAll + Unimported.  Right group: ? (28px fixed) + Import.
+    local W = math.max(600,
+        PAD + cancelW + TH.GAP + selectAllW + TH.GAP + unimportedW + TH.GAP
+        + 28 + TH.GAP + importBtnW + PAD)
+    local H  = 480
     local BTNH  = TH.BUTTON_HGT
     local FHS   = TH.FONT_HGT_SMALL
     local ROW_H = FHS * 2 + 10
@@ -158,22 +168,27 @@ function ManualSave.openImportScreen()
         onSelect = function(item, _) item.checked = not item.checked end,
     })
 
-    -- Footer buttons
-    local btnY = H - BTNH - PAD
+    -- Footer buttons — positions computed from text-based widths.
+    local btnY      = H - BTNH - PAD
+    local cancelX     = PAD
+    local selectAllX  = cancelX    + cancelW     + TH.GAP
+    local unimportedX = selectAllX + selectAllW  + TH.GAP
+    local importBtnX  = W - PAD - importBtnW
+    local helpX       = importBtnX - TH.GAP - 28
 
     ManualSave.makeButton(p, {
-        x=PAD, y=btnY, w=80, h=BTNH, label=getText("UI_MSM_Common_BtnCancel"), style="normal",
+        x=cancelX, y=btnY, w=cancelW, h=BTNH, label=getText("UI_MSM_Common_BtnCancel"), style="normal",
         onClick = function() ManualSave.closeImportScreen() end,
     })
     ManualSave.makeButton(p, {
-        x=PAD + 80 + TH.GAP, y=btnY, w=90, h=BTNH, label=getText("UI_MSM_Import_BtnSelectAll"), style="normal",
+        x=selectAllX, y=btnY, w=selectAllW, h=BTNH, label=getText("UI_MSM_Import_BtnSelectAll"), style="normal",
         onClick = function()
             if phase ~= "ready" then return end
             for _, e in ipairs(allItems) do e.checked = true end
         end,
     })
     ManualSave.makeButton(p, {
-        x=PAD + 80 + TH.GAP + 90 + TH.GAP, y=btnY, w=106, h=BTNH, label=getText("UI_MSM_Import_BtnUnimported"), style="normal",
+        x=unimportedX, y=btnY, w=unimportedW, h=BTNH, label=getText("UI_MSM_Import_BtnUnimported"), style="normal",
         onClick = function()
             if phase ~= "ready" then return end
             for _, e in ipairs(allItems) do e.checked = not e.imported end
@@ -181,14 +196,14 @@ function ManualSave.openImportScreen()
     })
 
     ManualSave.makeButton(p, {
-        x=W - PAD - 160 - TH.GAP - 28, y=btnY, w=28, h=BTNH, label="?", style="normal",
+        x=helpX, y=btnY, w=28, h=BTNH, label="?", style="normal",
         onClick = function()
             if ManualSave.openHelpScreen then ManualSave.openHelpScreen("import") end
         end,
     })
 
     ManualSave.makeButton(p, {
-        x=W - PAD - 160, y=btnY, w=160, h=BTNH, label=getText("UI_MSM_Import_BtnImport"), style="primary", enabled=false,
+        x=importBtnX, y=btnY, w=importBtnW, h=BTNH, label=getText("UI_MSM_Import_BtnImport"), style="primary", enabled=false,
         update = function(self2)
             local n = ManualSave.ImportScreen.countChecked(allItems)
             self2:setTitle(n > 0 and getText("UI_MSM_Import_BtnImportN", tostring(n)) or getText("UI_MSM_Import_BtnImport"))

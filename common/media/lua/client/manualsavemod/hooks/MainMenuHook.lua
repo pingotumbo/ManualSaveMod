@@ -1,6 +1,7 @@
 -- Hooks/MainMenuHook.lua
 -- Injects "LOAD MANUAL SAVE" into the main menu.
 -- Opens LoadPanel with fromMainMenu = true  (shows IMPORT button).
+---@diagnostic disable: undefined-global
 
 ManualSave = ManualSave or {}
 
@@ -47,6 +48,10 @@ Events.OnMainMenuEnter.Add(function()
     ms.loadManualSaveOption.fade:setFadeIn(false)
     ms.loadManualSaveOption.prerender   = MainScreen.prerenderBottomPanelLabel
     bp:addChild(ms.loadManualSaveOption)
+
+    -- Ensure our label width reflects the translated text before normalization.
+    local tw = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_MainMenu_BtnLoad"))
+    ms.loadManualSaveOption:setWidth(tw + 20)
 
     -- Re-normalize all ISLabel widths to match vanilla
     local maxW = 0
