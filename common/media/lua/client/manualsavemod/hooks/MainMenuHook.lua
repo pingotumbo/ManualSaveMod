@@ -39,7 +39,7 @@ Events.OnMainMenuEnter.Add(function()
     end
 
     -- "LOAD MANUAL SAVE" at old exitY
-    ms.loadManualSaveOption = ISLabel:new(labelX, exitY, labelHgt, "LOAD MANUAL SAVE", 1, 1, 1, 1, UIFont.Large, true)
+    ms.loadManualSaveOption = ISLabel:new(labelX, exitY, labelHgt, getText("UI_MSM_MainMenu_BtnLoad"), 1, 1, 1, 1, UIFont.Large, true)
     ms.loadManualSaveOption.internal    = "MANUALSAVE_LOADMANUALSAVE"
     ms.loadManualSaveOption:initialise()
     ms.loadManualSaveOption.onMouseDown = onLoadManualSaveClick

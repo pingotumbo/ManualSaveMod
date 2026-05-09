@@ -50,18 +50,18 @@ function ManualSave.makeSaveFileSection(parent, opts)
     local h   = FHS + 12 + lh * 3 + 6
 
     local sec = ManualSave.makeSectionPanel(parent, {
-        x=0, y=opts.y, w=opts.w, h=h, label="SAVE FILE",
+        x=0, y=opts.y, w=opts.w, h=h, label=getText("UI_MSM_Display_HeaderFile"),
     })
     local x1, x2 = 12, math.floor(opts.w / 2)
     local y = sec.headerH
 
-    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,      w=x2-x1-4,      label="Game Mode", getValue=function() return m.GMODE    or m.gameMode or "--" end })
-    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,      w=opts.w-x2-4,  label="Save Type", getValue=function() return m.TYPE     or "--"       end })
+    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,      w=x2-x1-4,      label=getText("UI_MSM_Display_GameMode"),  getValue=function() return m.GMODE    or m.gameMode or "--" end })
+    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,      w=opts.w-x2-4,  label=getText("UI_MSM_Display_SaveType"),  getValue=function() return m.TYPE     or "--"       end })
     y = y + lh
-    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,      w=opts.w-x1-4,  label="Last Saved",getValue=function() return m.DATE     or "--"       end })
+    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,      w=opts.w-x1-4,  label=getText("UI_MSM_Display_LastSaved"), getValue=function() return m.DATE     or "--"       end })
     y = y + lh
-    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,      w=x2-x1-4,      label="Playtime",  getValue=function() return m.PLAYTIME or "--"       end })
-    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,      w=opts.w-x2-4,  label="Size",      getValue=function() return m.SIZE     or "--"       end })
+    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,      w=x2-x1-4,      label=getText("UI_MSM_Display_Playtime"),  getValue=function() return m.PLAYTIME or "--"       end })
+    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,      w=opts.w-x2-4,  label=getText("UI_MSM_Display_Size"),      getValue=function() return m.SIZE     or "--"       end })
 
     return h
 end
@@ -77,15 +77,15 @@ function ManualSave.makeWorldStateSection(parent, opts)
     local h   = FHS + 12 + lh * 2 + 6
 
     local sec = ManualSave.makeSectionPanel(parent, {
-        x=0, y=opts.y, w=opts.w, h=h, label="WORLD STATE", accent="secondary",
+        x=0, y=opts.y, w=opts.w, h=h, label=getText("UI_MSM_Display_HeaderWorld"), accent="secondary",
     })
     local x1, x2 = 12, math.floor(opts.w / 2)
     local y = sec.headerH
 
-    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,    w=x2-x1-4,     label="World", getValue=function() return m.world or "--" end })
-    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,    w=opts.w-x2-4, label="Day",   getValue=function() return m.DAY and ("Day "..m.DAY) or "--" end })
+    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,    w=x2-x1-4,     label=getText("UI_MSM_Display_World"), getValue=function() return m.world or "--" end })
+    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,    w=opts.w-x2-4, label=getText("UI_MSM_Display_Day"),   getValue=function() return m.DAY and ("Day "..m.DAY) or "--" end })
     y = y + lh
-    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,    w=opts.w-x1-4, label="Seed",  getValue=function() return m.SEED or "--" end })
+    ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,    w=opts.w-x1-4, label=getText("UI_MSM_Display_Seed"),  getValue=function() return m.SEED or "--" end })
 
     return h
 end

@@ -55,7 +55,7 @@ function ManualSave.openConfirmDialog(opts)
         x = W - (btnW + TH.PAD),
         y = btnY,
         w = btnW, h = btnH,
-        label = opts.confirm or "Confirm",
+        label = opts.confirm or getText("UI_MSM_Dialog_BtnConfirm"),
         style = opts.danger and "danger" or "primary",
         onClick = function()
             d.close()
@@ -67,7 +67,7 @@ function ManualSave.openConfirmDialog(opts)
         x = W - (btnW + TH.PAD) * 2 - TH.GAP,
         y = btnY,
         w = btnW, h = btnH,
-        label = opts.cancel or "Cancel",
+        label = opts.cancel or getText("UI_MSM_Common_BtnCancel"),
         style = "normal",
         onClick = function()
             d.close()
@@ -143,7 +143,7 @@ function ManualSave.openNameInputDialog(opts)
         x = W - (btnW + TH.PAD),
         y = btnY,
         w = btnW, h = TH.BUTTON_HGT,
-        label = opts.confirm or "OK",
+        label = opts.confirm or "OK",  -- "OK" kept as generic default; callers pass specific labels
         style = "primary",
         onClick = function()
             local name = ti.getValue()
@@ -158,7 +158,7 @@ function ManualSave.openNameInputDialog(opts)
         x = W - (btnW + TH.PAD) * 2 - TH.GAP,
         y = btnY,
         w = btnW, h = TH.BUTTON_HGT,
-        label = "Cancel",
+        label = getText("UI_MSM_Common_BtnCancel"),
         style = "normal",
         onClick = function()
             d.close()
@@ -195,12 +195,12 @@ function ManualSave.openFullSaveDialog(opts)
 
     p.prerender = function(self2)
         ISPanel.prerender(self2)
-        self2:drawText("Full Save",
+        self2:drawText(getText("UI_MSM_Dialog_FullSaveTitle"),
             TH.PAD, TH.PAD, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Medium)
         local y = TH.PAD + TH.FONT_HGT_MEDIUM + TH.GAP * 2
-        self2:drawText("The game will exit to the main menu to ensure a complete save.",
+        self2:drawText(getText("UI_MSM_Dialog_FullSaveBody1"),
             TH.PAD, y, TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 1, UIFont.Small)
-        self2:drawText("What would you like to do after saving?",
+        self2:drawText(getText("UI_MSM_Dialog_FullSaveBody2"),
             TH.PAD, y + TH.FONT_HGT_SMALL + 4, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Small)
         ManualSave.Draw.separator(self2, 0, H - 48, W, 0.4)
     end
@@ -210,12 +210,12 @@ function ManualSave.openFullSaveDialog(opts)
 
     ManualSave.makeButton(p, {
         x=TH.PAD, y=btnY, w=80, h=btnH,
-        label="Cancel", style="normal",
+        label=getText("UI_MSM_Common_BtnCancel"), style="normal",
         onClick=function() d.close() end,
     })
     ManualSave.makeButton(p, {
         x=W - TH.PAD - 220, y=btnY, w=104, h=btnH,
-        label="Save & Exit", style="danger",
+        label=getText("UI_MSM_Dialog_BtnSaveExit"), style="danger",
         onClick=function()
             d.close()
             if opts.onExit then pcall(opts.onExit) end
@@ -223,7 +223,7 @@ function ManualSave.openFullSaveDialog(opts)
     })
     ManualSave.makeButton(p, {
         x=W - TH.PAD - 110, y=btnY, w=110, h=btnH,
-        label="Save & Return", style="primary",
+        label=getText("UI_MSM_Dialog_BtnSaveReturn"), style="primary",
         onClick=function()
             d.close()
             if opts.onReturn then pcall(opts.onReturn) end

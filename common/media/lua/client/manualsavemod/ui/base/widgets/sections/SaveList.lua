@@ -186,17 +186,17 @@ function ManualSave.makeSaveList(parent, opts)
     ManualSave.makeToolbar(parent, {
         x=TH.PAD, y=toolY, w=toolbarW, h=TH.BUTTON_HGT,
         items = {
-            { id="date", label="Date", kind="toggle", group="sort", active=true,
+            { id="date", label=getText("UI_MSM_List_SortDate"), kind="toggle", group="sort", active=true,
               arrowFn = function()
                   local st = ManualSave.LoadScreen._state
                   return st and st.sortMode == "date" and (st.sortAsc and "up" or "down") or nil
               end },
-            { id="name", label="Name", kind="toggle", group="sort", active=false,
+            { id="name", label=getText("UI_MSM_List_SortName"), kind="toggle", group="sort", active=false,
               arrowFn = function()
                   local st = ManualSave.LoadScreen._state
                   return st and st.sortMode == "name" and (st.sortAsc and "up" or "down") or nil
               end },
-            { id="size", label="Size", kind="toggle", group="sort", active=false,
+            { id="size", label=getText("UI_MSM_List_SortSize"), kind="toggle", group="sort", active=false,
               arrowFn = function()
                   local st = ManualSave.LoadScreen._state
                   return st and st.sortMode == "size" and (st.sortAsc and "up" or "down") or nil
@@ -214,7 +214,7 @@ function ManualSave.makeSaveList(parent, opts)
     ManualSave.makeTextInput(parent, {
         x=TH.PAD + toolbarW + TH.GAP, y=toolY,
         w=listW - TH.PAD * 2 - toolbarW - TH.GAP, h=TH.BUTTON_HGT,
-        icon="search", placeholder="Search slot / world",
+        icon="search", placeholder=getText("UI_MSM_List_SearchPlaceholder"),
         onChange = function(text)
             local st = ManualSave.LoadScreen._state
             if st then st.searchText = text; applyFilter() end

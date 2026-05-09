@@ -32,7 +32,7 @@ function ManualSave.openSaveScreen()
 
     local d = ManualSave.makeFloatingPanel({
         w=W, h=H,
-        title   = "Save Game",
+        title   = getText("UI_MSM_Save_Title"),
         onClose = function() ManualSave.closeSaveScreen() end,
     })
     local p   = d.panel
@@ -50,7 +50,7 @@ function ManualSave.openSaveScreen()
     -- "Save name:" label
     ManualSave.makeLabel(p, {
         x=TH.PAD, y=y0, w=W - TH.PAD*2, h=TH.FONT_HGT_SMALL,
-        text="Save name:",
+        text=getText("UI_MSM_Save_LabelName"),
         r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B,
     })
 
@@ -60,14 +60,14 @@ function ManualSave.openSaveScreen()
         y           = y0 + TH.FONT_HGT_SMALL + TH.GAP,
         w           = W - TH.PAD * 2,
         h           = TH.BUTTON_HGT,
-        placeholder = "Enter save name",
+        placeholder = getText("UI_MSM_Save_Placeholder"),
     })
 
     -- Quick Save toggle + "?" info button
     local toggleY = y0 + TH.FONT_HGT_SMALL + TH.GAP + TH.BUTTON_HGT + TH.GAP
     ManualSave.makeToolbar(p, {
         x = TH.PAD, y = toggleY, w = 108, h = TH.BUTTON_HGT,
-        items    = { { id="quick", label="Quick Save", kind="toggle" } },
+        items    = { { id="quick", label=getText("UI_MSM_Save_BtnQuickSave"), kind="toggle" } },
         onToggle = function(_, active) isQuick = active end,
     })
 
@@ -86,7 +86,7 @@ function ManualSave.openSaveScreen()
     ManualSave.makeButton(p, {
         x = W - TH.PAD - btnW * 2 - TH.GAP,
         y = btnY, w = 80, h = TH.BUTTON_HGT,
-        label = "Back", style = "normal",
+        label = getText("UI_MSM_Common_BtnBack"), style = "normal",
         onClick = function() ManualSave.closeSaveScreen() end,
     })
 
@@ -94,14 +94,14 @@ function ManualSave.openSaveScreen()
     ManualSave.makeButton(p, {
         x = W - TH.PAD - btnW,
         y = btnY, w = btnW, h = TH.BUTTON_HGT,
-        label = "Full Save", style = "primary",
+        label = getText("UI_MSM_Save_BtnFullSave"), style = "primary",
         groups = {"bat_required"},
-        update = function(self2) self2:setTitle(isQuick and "Quick Save" or "Full Save") end,
+        update = function(self2) self2:setTitle(isQuick and getText("UI_MSM_Save_BtnQuickSave") or getText("UI_MSM_Save_BtnFullSave")) end,
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             local name = ManualSave.sanitize(nameInput.getValue())
             if name == "" then
-                statusMsg = "Please enter a name."
+                statusMsg = getText("UI_MSM_Save_ErrNoName")
                 return
             end
             statusMsg = nil
@@ -136,20 +136,20 @@ function ManualSave.openSaveScreen()
     ManualSave.makeInfoButton(p, {
         x = infoX, y = infoY, sz = infoSz, popW = 292,
         lines = {
-            { "Copies the save folder instantly",         "normal" },
-            { "without exiting the game.",                "normal" },
-            { "",                                                   },
-            { "WHAT IS SAVED:",                           "header" },
-            { "  Player, inventory, nearby world state.", "dim"    },
-            { "",                                                   },
-            { "WHAT MAY NOT BE SAVED:",                   "warn"   },
-            { "  Zombie positions — respawned randomly.", "dim"    },
-            { "  You may find them right in front of",   "warn"   },
-            { "  you when loading this save.",            "warn"   },
-            { "  Distant chunks not yet written to disk.","dim"    },
-            { "  Weather and time of day.",               "dim"    },
-            { "",                                                   },
-            { "Use Full Save for a reliable backup.",     "normal" },
+            { getText("UI_MSM_Save_InfoLine1"),        "normal" },
+            { getText("UI_MSM_Save_InfoLine2"),        "normal" },
+            { "",                                               },
+            { getText("UI_MSM_Save_InfoWhatSaved"),    "header" },
+            { getText("UI_MSM_Save_InfoWhatSavedBody"),"dim"    },
+            { "",                                               },
+            { getText("UI_MSM_Save_InfoWhatNot"),      "warn"   },
+            { getText("UI_MSM_Save_InfoZombies"),      "dim"    },
+            { getText("UI_MSM_Save_InfoZombiesWarn1"), "warn"   },
+            { getText("UI_MSM_Save_InfoZombiesWarn2"), "warn"   },
+            { getText("UI_MSM_Save_InfoChunks"),       "dim"    },
+            { getText("UI_MSM_Save_InfoWeather"),      "dim"    },
+            { "",                                               },
+            { getText("UI_MSM_Save_InfoUseFullSave"),  "normal" },
         },
     })
 
@@ -157,7 +157,7 @@ function ManualSave.openSaveScreen()
     ManualSave.makeLabel(p, {
         x=TH.PAD, y=btnY - TH.FONT_HGT_SMALL - 4, w=W - TH.PAD*2, h=TH.FONT_HGT_SMALL,
         getText = function()
-            return statusMsg or (_batWarn and "Watcher offline - saves disabled.") or ""
+            return statusMsg or (_batWarn and getText("UI_MSM_Save_WarnOffline")) or ""
         end,
         r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
     })

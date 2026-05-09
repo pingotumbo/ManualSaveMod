@@ -69,7 +69,7 @@ function ManualSave.openImportScreen()
     local errMsg   = ""
 
     local d = ManualSave.makeFloatingPanel({
-        w=W, h=H, title="Import Saves",
+        w=W, h=H, title=getText("UI_MSM_Import_Title"),
         onClose = function() ManualSave.closeImportScreen() end,
     })
     local p      = d.panel
@@ -84,14 +84,14 @@ function ManualSave.openImportScreen()
         textX=PAD, textY=5,
         getText = function()
             if phase == "scanning" then
-                return "Scanning vanilla saves"
+                return getText("UI_MSM_Import_Scanning")
             elseif phase == "ready" then
                 local n = #allItems
                 return n > 0
-                    and (n .. " save" .. (n ~= 1 and "s" or "") .. " found — click a row to select")
-                    or  "No vanilla saves found."
+                    and (n .. " " .. (n ~= 1 and getText("UI_MSM_Import_FoundPlural") or getText("UI_MSM_Import_FoundSingle")) .. getText("UI_MSM_Import_FoundSuffix"))
+                    or  getText("UI_MSM_Import_NoSaves")
             else
-                return "Error: " .. errMsg
+                return getText("UI_MSM_Import_ErrPrefix") .. errMsg
             end
         end,
         getR = function() return phase == "ready" and TH.TEXT_R or (phase == "scanning" and TH.MUTED_R or TH.DANGER_R) end,
@@ -105,7 +105,7 @@ function ManualSave.openImportScreen()
 
     ManualSave.makeTextInput(p, {
         x=PAD, y=searchY, w=W - PAD * 2, h=BTNH,
-        icon="search", placeholder="Search saves",
+        icon="search", placeholder=getText("UI_MSM_Import_SearchPlaceholder"),
         onChange = function(text)
             searchTxt = text:lower()
             if not list then return end
@@ -145,7 +145,7 @@ function ManualSave.openImportScreen()
             panel:drawText(item.world, nameX, lineY, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, alpha, UIFont.Small)
             if item.imported then
                 local iw = getTextManager():MeasureStringX(UIFont.Small, item.world)
-                panel:drawText("  (reimport)", nameX + iw, lineY,
+                panel:drawText("  " .. getText("UI_MSM_Import_BadgReimport"), nameX + iw, lineY,
                     TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.4, UIFont.Small)
             end
             panel:drawText(item.gmode, nameX, line2Y, TH.DIM_R, TH.DIM_G, TH.DIM_B, 0.7, UIFont.Small)
@@ -162,18 +162,18 @@ function ManualSave.openImportScreen()
     local btnY = H - BTNH - PAD
 
     ManualSave.makeButton(p, {
-        x=PAD, y=btnY, w=80, h=BTNH, label="Cancel", style="normal",
+        x=PAD, y=btnY, w=80, h=BTNH, label=getText("UI_MSM_Common_BtnCancel"), style="normal",
         onClick = function() ManualSave.closeImportScreen() end,
     })
     ManualSave.makeButton(p, {
-        x=PAD + 80 + TH.GAP, y=btnY, w=90, h=BTNH, label="Select All", style="normal",
+        x=PAD + 80 + TH.GAP, y=btnY, w=90, h=BTNH, label=getText("UI_MSM_Import_BtnSelectAll"), style="normal",
         onClick = function()
             if phase ~= "ready" then return end
             for _, e in ipairs(allItems) do e.checked = true end
         end,
     })
     ManualSave.makeButton(p, {
-        x=PAD + 80 + TH.GAP + 90 + TH.GAP, y=btnY, w=106, h=BTNH, label="Unimported", style="normal",
+        x=PAD + 80 + TH.GAP + 90 + TH.GAP, y=btnY, w=106, h=BTNH, label=getText("UI_MSM_Import_BtnUnimported"), style="normal",
         onClick = function()
             if phase ~= "ready" then return end
             for _, e in ipairs(allItems) do e.checked = not e.imported end
@@ -188,10 +188,10 @@ function ManualSave.openImportScreen()
     })
 
     ManualSave.makeButton(p, {
-        x=W - PAD - 160, y=btnY, w=160, h=BTNH, label="Import", style="primary", enabled=false,
+        x=W - PAD - 160, y=btnY, w=160, h=BTNH, label=getText("UI_MSM_Import_BtnImport"), style="primary", enabled=false,
         update = function(self2)
             local n = ManualSave.ImportScreen.countChecked(allItems)
-            self2:setTitle(n > 0 and ("Import (" .. n .. ")") or "Import")
+            self2:setTitle(n > 0 and getText("UI_MSM_Import_BtnImportN", tostring(n)) or getText("UI_MSM_Import_BtnImport"))
             self2:setEnable(phase == "ready" and n > 0)
         end,
         onClick = function()
@@ -199,7 +199,7 @@ function ManualSave.openImportScreen()
             local n = ManualSave.ImportScreen.countChecked(allItems)
             if n == 0 then return end
             if not ManualSave.ImportScreen.writeQueueFile(allItems) then
-                phase = "error"; errMsg = "Could not write queue file."; return
+                phase = "error"; errMsg = getText("UI_MSM_Import_ErrQueueFile"); return
             end
             _importing = true; _screen = nil; d.close()
             ManualSave.SignalBus.send("IMPORT", nil, function(status)
@@ -221,7 +221,7 @@ function ManualSave.openImportScreen()
 
     -- Kick off scan
     ManualSave.SignalBus.send("SCAN_VANILLA", nil, function(status)
-        if status ~= "OK" then phase = "error"; errMsg = "Scan failed."; return end
+        if status ~= "OK" then phase = "error"; errMsg = getText("UI_MSM_Import_ErrScanFailed"); return end
         allItems = ManualSave.ImportScreen.readScanFile()
         list.setItems(allItems)
         phase = "ready"

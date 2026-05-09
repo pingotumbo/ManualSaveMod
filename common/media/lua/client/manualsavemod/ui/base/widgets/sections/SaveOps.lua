@@ -31,18 +31,18 @@ function ManualSave.makeSaveActions(parent, opts)
     end
 
     -- SAVE ACTIONS
-    ry = ry + sectionLbl(ry, "SAVE ACTIONS")
+    ry = ry + sectionLbl(ry, getText("UI_MSM_Ops_HeaderSaveActions"))
     ManualSave.makeButton(parent, {
         x=0, y=ry, w=halfBtnW, h=btnH,
-        label="Rename save", style="normal",
+        label=getText("UI_MSM_Ops_BtnRename"), style="normal",
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
             ManualSave.openNameInputDialog({
-                title       = "Rename save:",
+                title       = getText("UI_MSM_Ops_RenameTitle"),
                 value       = st.selected.slot,
-                confirm     = "Rename",
+                confirm     = getText("UI_MSM_Common_BtnRename"),
                 helpSection = "rename",
                 onConfirm = function(newName)
                     newName = sanitize(newName)
@@ -63,15 +63,15 @@ function ManualSave.makeSaveActions(parent, opts)
     })
     ManualSave.makeButton(parent, {
         x=halfBtnW+TH.GAP, y=ry, w=halfBtnW, h=btnH,
-        label="Duplicate", style="normal",
+        label=getText("UI_MSM_Ops_BtnDuplicate"), style="normal",
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
             ManualSave.openNameInputDialog({
-                title       = "Duplicate save as:",
+                title       = getText("UI_MSM_Ops_DuplicateTitle"),
                 value       = ManualSave.nextCopyName(st.selected.slot, st.saves),
-                confirm     = "Duplicate",
+                confirm     = getText("UI_MSM_Ops_BtnDuplicate"),
                 helpSection = "duplicate",
                 onConfirm = function(newName)
                     newName = sanitize(newName)
@@ -95,22 +95,22 @@ function ManualSave.makeSaveActions(parent, opts)
     ry = ry + btnH + TH.GAP
 
     -- WORLD ACTIONS
-    ry = ry + sectionLbl(ry, "WORLD ACTIONS")
+    ry = ry + sectionLbl(ry, getText("UI_MSM_Ops_HeaderWorldActions"))
     local infoSz  = 20
     local waInfoY = ry + math.floor((btnH - infoSz) / 2)
 
     ManualSave.makeButton(parent, {
         x=0, y=ry, w=halfBtnW, h=btnH,
-        label="Rename world", style="normal",
+        label=getText("UI_MSM_Ops_BtnRenameWorld"), style="normal",
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
             local old = st.selected
             ManualSave.openNameInputDialog({
-                title       = "Rename world:",
+                title       = getText("UI_MSM_Ops_RenameWorldTitle"),
                 value       = old.world or old.WORLD or "",
-                confirm     = "Rename",
+                confirm     = getText("UI_MSM_Common_BtnRename"),
                 helpSection = "renameworld",
                 onConfirm = function(newWorld)
                     newWorld = sanitize(newWorld)
@@ -137,18 +137,18 @@ function ManualSave.makeSaveActions(parent, opts)
     ManualSave.makeInfoButton(parent, {
         x=halfBtnW-infoSz-3, y=waInfoY, sz=infoSz, popW=240,
         lines = {
-            { "Renames the world folder on disk.",        "normal" },
-            { "All saves sharing this world name",        "normal" },
-            { "are affected together.",                   "normal" },
-            { "",                                                   },
-            { "The old folder name becomes invalid.",     "dim"    },
+            { getText("UI_MSM_Ops_RenameWorldInfo1"), "normal" },
+            { getText("UI_MSM_Ops_RenameWorldInfo2"), "normal" },
+            { getText("UI_MSM_Ops_RenameWorldInfo3"), "normal" },
+            { "",                                              },
+            { getText("UI_MSM_Ops_RenameWorldInfo4"), "dim"   },
         },
     })
 
     local wa2X = halfBtnW + TH.GAP
     ManualSave.makeButton(parent, {
         x=wa2X, y=ry, w=halfBtnW, h=btnH,
-        label="Strip mods", style="danger",
+        label=getText("UI_MSM_Ops_BtnStripMods"), style="danger",
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
@@ -156,9 +156,9 @@ function ManualSave.makeSaveActions(parent, opts)
             local old  = st.selected
             local base = slotDisplay(old.slot) .. " [NO MODS]"
             ManualSave.openNameInputDialog({
-                title       = "Strip mods — save copy as:",
+                title       = getText("UI_MSM_Ops_StripModsTitle"),
                 value       = base,
-                confirm     = "Create copy",
+                confirm     = getText("UI_MSM_Ops_BtnCreateCopy"),
                 helpSection = "stripmods",
                 onConfirm = function(newName)
                     newName = sanitize(newName)
@@ -183,13 +183,13 @@ function ManualSave.makeSaveActions(parent, opts)
     ManualSave.makeInfoButton(parent, {
         x=wa2X+halfBtnW-infoSz-3, y=waInfoY, sz=infoSz, popW=240, color="danger",
         lines = {
-            { "Creates a copy of this save with",         "normal" },
-            { "the mod list cleared from metadata.",      "normal" },
-            { "",                                                   },
-            { "Mod content already in the world",         "dim"    },
-            { "(items, structures) is not removed.",      "dim"    },
-            { "Use to load vanilla or with a",            "dim"    },
-            { "different mod set.",                       "dim"    },
+            { getText("UI_MSM_Ops_StripModsInfo1"), "normal" },
+            { getText("UI_MSM_Ops_StripModsInfo2"), "normal" },
+            { "",                                            },
+            { getText("UI_MSM_Ops_StripModsInfo3"), "dim"   },
+            { getText("UI_MSM_Ops_StripModsInfo4"), "dim"   },
+            { getText("UI_MSM_Ops_StripModsInfo5"), "dim"   },
+            { getText("UI_MSM_Ops_StripModsInfo6"), "dim"   },
         },
     })
     ry = ry + btnH
@@ -222,12 +222,12 @@ function ManualSave.makeRecoveryFlags(parent, opts)
     })
     ManualSave.makeLabel(hdr, {
         x=12, y=4, w=w-16, h=FHS,
-        text="[!] RECOVERY FLAGS",
+        text=getText("UI_MSM_Ops_HeaderRecovery"),
         r=TH.DANGER_R, g=TH.DANGER_G+0.1, b=TH.DANGER_B+0.05,
     })
     ManualSave.makeLabel(hdr, {
         x=12, y=4+FHS+3, w=w-16, h=FHS,
-        text="Applied ONCE on the next load. Cannot be undone.",
+        text=getText("UI_MSM_Ops_RecoveryWarning"),
         r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.75,
     })
     ManualSave.makeButton(hdr, {
@@ -242,45 +242,45 @@ function ManualSave.makeRecoveryFlags(parent, opts)
 
     -- Flag cards
     local flagDefs = {
-        { key="wipeZombies",    label="Wipe zombies",          desc="Removes all zombies from the map on load.",
+        { key="wipeZombies",    label=getText("UI_MSM_Ops_FlagWipeZombies"),    desc=getText("UI_MSM_Ops_FlagWipeZombiesDesc"),
           info = { popW=240, lines = {
-              { "Removes all zombies from the map",         "normal" },
-              { "when this save is loaded.",                "normal" },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo1"), "normal" },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo2"), "normal" },
               { "",                                                   },
-              { "Useful if zombies are corrupted,",         "dim"    },
-              { "stuck, or blocking spawn.",                "dim"    },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo3"), "dim"    },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo4"), "dim"    },
               { "",                                                   },
-              { "Cannot be undone after loading.",          "warn"   },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo5"), "warn"   },
           }},
         },
-        { key="resetPlayerPos", label="Reset player position", desc="Teleports character to the world spawn point.",
+        { key="resetPlayerPos", label=getText("UI_MSM_Ops_FlagResetPos"),       desc=getText("UI_MSM_Ops_FlagResetPosDesc"),
           info = { popW=248, lines = {
-              { "Teleports the player to the world",        "normal" },
-              { "spawn point on load.",                     "normal" },
-              { "",                                                   },
-              { "Useful if stuck in an unreachable area.",  "dim"    },
+              { getText("UI_MSM_Ops_FlagResetPosInfo1"), "normal" },
+              { getText("UI_MSM_Ops_FlagResetPosInfo2"), "normal" },
+              { "",                                               },
+              { getText("UI_MSM_Ops_FlagResetPosInfo3"), "dim"   },
           }},
         },
-        { key="healPlayer",     label="Heal player",           desc="Restores health and removes all injuries.",
+        { key="healPlayer",     label=getText("UI_MSM_Ops_FlagHeal"),           desc=getText("UI_MSM_Ops_FlagHealDesc"),
           info = { popW=240, lines = {
-              { "Restores health to full and clears",       "normal" },
-              { "all injuries, moodles, and infections",    "normal" },
-              { "on load.",                                 "normal" },
+              { getText("UI_MSM_Ops_FlagHealInfo1"), "normal" },
+              { getText("UI_MSM_Ops_FlagHealInfo2"), "normal" },
+              { getText("UI_MSM_Ops_FlagHealInfo3"), "normal" },
           }},
         },
-        { key="resetWeather",   label="Reset weather",         desc="Clears weather back to clear-sky default.",
+        { key="resetWeather",   label=getText("UI_MSM_Ops_FlagResetWeather"),   desc=getText("UI_MSM_Ops_FlagResetWeatherDesc"),
           info = { popW=240, lines = {
-              { "Resets active weather to clear sky.",      "normal" },
-              { "",                                                   },
-              { "Useful if weather state is corrupted.",    "dim"    },
+              { getText("UI_MSM_Ops_FlagResetWeatherInfo1"), "normal" },
+              { "",                                                    },
+              { getText("UI_MSM_Ops_FlagResetWeatherInfo2"), "dim"    },
           }},
         },
-        { key="resetTime",      label="Reset time of day",     desc="Sets the in-game clock to the chosen preset.",
+        { key="resetTime",      label=getText("UI_MSM_Ops_FlagResetTime"),      desc=getText("UI_MSM_Ops_FlagResetTimeDesc"),
           info = { popW=248, lines = {
-              { "Sets the in-game clock to the",            "normal" },
-              { "selected time preset on load.",            "normal" },
-              { "",                                                   },
-              { "Day count and calendar are not affected.", "dim"    },
+              { getText("UI_MSM_Ops_FlagResetTimeInfo1"), "normal" },
+              { getText("UI_MSM_Ops_FlagResetTimeInfo2"), "normal" },
+              { "",                                                 },
+              { getText("UI_MSM_Ops_FlagResetTimeInfo3"), "dim"    },
           }},
         },
     }
@@ -320,19 +320,19 @@ function ManualSave.makeRecoveryFlags(parent, opts)
             })
             ManualSave.makeLabel(presetRow, {
                 x=10, y=math.floor((rowH2 - TH.FONT_HGT_SMALL) / 2), w=w-10, h=TH.FONT_HGT_SMALL,
-                text="Set time:",
+                text=getText("UI_MSM_Ops_SetTime"),
                 r=TH.DIM_R, g=TH.DIM_G, b=TH.DIM_B, a=0.75,
             })
-            local lblW  = getTextManager():MeasureStringX(UIFont.Small, "Set time: ") + 12
+            local lblW  = getTextManager():MeasureStringX(UIFont.Small, getText("UI_MSM_Ops_SetTime") .. " ") + 12
             local pbY   = math.floor((rowH2 - btnH) / 2)
             local preset = st.recoveryTimePreset or "dawn"
             ManualSave.makeToolbar(presetRow, {
                 x=lblW, y=pbY, w=w - lblW, h=btnH, gap=4,
                 items = {
-                    { id="dawn",     label="Dawn",     kind="toggle", group="time", active=(preset=="dawn")     },
-                    { id="midday",   label="Midday",   kind="toggle", group="time", active=(preset=="midday")   },
-                    { id="dusk",     label="Dusk",     kind="toggle", group="time", active=(preset=="dusk")     },
-                    { id="midnight", label="Midnight", kind="toggle", group="time", active=(preset=="midnight") },
+                    { id="dawn",     label=getText("UI_MSM_Ops_TimeDawn"),     kind="toggle", group="time", active=(preset=="dawn")     },
+                    { id="midday",   label=getText("UI_MSM_Ops_TimeMidday"),   kind="toggle", group="time", active=(preset=="midday")   },
+                    { id="dusk",     label=getText("UI_MSM_Ops_TimeDusk"),     kind="toggle", group="time", active=(preset=="dusk")     },
+                    { id="midnight", label=getText("UI_MSM_Ops_TimeMidnight"), kind="toggle", group="time", active=(preset=="midnight") },
                 },
                 onToggle = function(id, _) st.recoveryTimePreset = id end,
             })
@@ -344,7 +344,7 @@ function ManualSave.makeRecoveryFlags(parent, opts)
     -- LOAD WITH FLAGS button
     ManualSave.makeButton(parent, {
         x=0, y=ry, w=w, h=btnH,
-        label = "LOAD WITH FLAGS",
+        label = getText("UI_MSM_Ops_BtnLoadWithFlags"),
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
@@ -353,18 +353,18 @@ function ManualSave.makeRecoveryFlags(parent, opts)
             if not anyActive then return end
             local times = { dawn="05:00", midday="12:00", dusk="20:00", midnight="00:00" }
             local lines = {}
-            if flags.wipeZombies    then table.insert(lines, "Wipe zombies")          end
-            if flags.resetPlayerPos then table.insert(lines, "Reset player position") end
-            if flags.healPlayer     then table.insert(lines, "Heal player")           end
-            if flags.resetWeather   then table.insert(lines, "Reset weather")         end
+            if flags.wipeZombies    then table.insert(lines, getText("UI_MSM_Ops_FlagWipeZombies"))  end
+            if flags.resetPlayerPos then table.insert(lines, getText("UI_MSM_Ops_FlagResetPos"))     end
+            if flags.healPlayer     then table.insert(lines, getText("UI_MSM_Ops_FlagHeal"))         end
+            if flags.resetWeather   then table.insert(lines, getText("UI_MSM_Ops_FlagResetWeather")) end
             if flags.resetTime then
                 local preset = st.recoveryTimePreset or "dawn"
-                table.insert(lines, "Reset time  >  " .. (times[preset] or preset))
+                table.insert(lines, getText("UI_MSM_Ops_FlagsTimeFmt", times[preset] or preset))
             end
             ManualSave.openConfirmDialog({
-                title       = "[!] Confirm recovery flags",
-                body        = table.concat(lines, "\n") .. "\n\nApplied once on load. Backup is not modified.",
-                confirm     = "Load with flags",
+                title       = getText("UI_MSM_Ops_ConfirmFlags"),
+                body        = table.concat(lines, "\n") .. "\n\n" .. getText("UI_MSM_Ops_FlagsConfirmSuffix"),
+                confirm     = getText("UI_MSM_Dialog_BtnLoadWithFlags"),
                 danger      = true,
                 helpSection = "recovery",
                 onConfirm = function()
@@ -404,12 +404,13 @@ function ManualSave.makeRecoveryFlags(parent, opts)
                 ab:drawRectBorder(0,0,ab.width,ab.height,0.5, TH.MUTED_R, TH.MUTED_G, TH.MUTED_B)
             end
             local fh = getTextManager():getFontHeight(UIFont.Small)
-            local tw = getTextManager():MeasureStringX(UIFont.Small, "LOAD WITH FLAGS")
+            local btnTxt = getText("UI_MSM_Ops_BtnLoadWithFlags")
+            local tw = getTextManager():MeasureStringX(UIFont.Small, btnTxt)
             local tr = anyActive and TH.DANGER_R       or TH.MUTED_R
             local tg = anyActive and TH.DANGER_G+0.12  or TH.MUTED_G
             local tb = anyActive and TH.DANGER_B+0.08  or TH.MUTED_B
             local ta = anyActive and 1.0 or 0.6
-            ab:drawText("LOAD WITH FLAGS",
+            ab:drawText(btnTxt,
                 math.floor((ab.width-tw)/2), math.floor((ab.height-fh)/2),
                 tr, tg, tb, ta, UIFont.Small)
         end,

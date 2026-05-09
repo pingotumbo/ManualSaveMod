@@ -62,9 +62,9 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
         if not st or not st.selected then return end
         local m = st.selected
         ManualSave.openConfirmDialog({
-            title       = "Delete save?",
-            body        = "\"" .. truncate(slotDisplay(m.slot or ""), 22) .. "\" will be permanently deleted.",
-            confirm     = "Delete",
+            title       = getText("UI_MSM_Detail_DeleteConfirm"),
+            body        = getText("UI_MSM_Detail_DeleteBody", "\"" .. truncate(slotDisplay(m.slot or ""), 22) .. "\""),
+            confirm     = getText("UI_MSM_Detail_BtnDelete"),
             danger      = true,
             helpSection = "delete",
             onConfirm = function()
@@ -96,9 +96,9 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
         if not st or not st.selected then return end
         local old = st.selected
         ManualSave.openNameInputDialog({
-            title       = "Duplicate save as:",
+            title       = getText("UI_MSM_Detail_DuplicateAs"),
             value       = ManualSave.nextCopyName(old.slot, st.saves),
-            confirm     = "Duplicate",
+            confirm     = getText("UI_MSM_Detail_BtnDuplicate"),
             helpSection = "duplicate",
             onConfirm = function(newName)
                 newName = sanitize(newName)
@@ -146,17 +146,17 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
     ManualSave.LoadScreen._actBtns        = {}
     ManualSave.LoadScreen._actBtns.rename = ManualSave.makeButton(parent, {
         x=rightX + rightW - TH.PAD - actW * 3 - TH.GAP * 2, y=detailY,
-        w=actW, h=TH.BUTTON_HGT - 2, label="Rename", style="normal", enabled=false,
+        w=actW, h=TH.BUTTON_HGT - 2, label=getText("UI_MSM_Detail_BtnRename"), style="normal", enabled=false,
         onClick = function() beginRenameInline() end,
     })
     ManualSave.LoadScreen._actBtns.clone  = ManualSave.makeButton(parent, {
         x=rightX + rightW - TH.PAD - actW * 2 - TH.GAP, y=detailY,
-        w=actW, h=TH.BUTTON_HGT - 2, label="Duplicate", style="normal", enabled=false,
+        w=actW, h=TH.BUTTON_HGT - 2, label=getText("UI_MSM_Detail_BtnDuplicate"), style="normal", enabled=false,
         onClick = function() doClone() end,
     })
     ManualSave.LoadScreen._actBtns.delete = ManualSave.makeButton(parent, {
         x=rightX + rightW - TH.PAD - actW, y=detailY,
-        w=actW, h=TH.BUTTON_HGT - 2, label="Delete", style="danger", enabled=false,
+        w=actW, h=TH.BUTTON_HGT - 2, label=getText("UI_MSM_Detail_BtnDelete"), style="danger", enabled=false,
         onClick = function() doDelete() end,
     })
 

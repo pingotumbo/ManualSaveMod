@@ -20,11 +20,11 @@ function ManualSave.makeLoadHeader(parent, opts)
 
     local ty  = math.floor((h - TH.FONT_HGT_LARGE) / 2)
     local ty2 = math.floor((h - TH.FONT_HGT_SMALL) / 2) + 1
-    local tx2 = TH.PAD + getTextManager():MeasureStringX(UIFont.Large, "MANUAL SAVES") + 14
+    local tx2 = TH.PAD + getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_LoadHeader_Title")) + 14
 
     ManualSave.makeLabel(hp, {
         x=TH.PAD, y=ty, w=w - TH.PAD, h=TH.FONT_HGT_LARGE,
-        text="MANUAL SAVES", font=UIFont.Large,
+        text=getText("UI_MSM_LoadHeader_Title"), font=UIFont.Large,
         r=TH.TEXT_R, g=TH.TEXT_G, b=TH.TEXT_B,
     })
 
@@ -38,7 +38,7 @@ function ManualSave.makeLoadHeader(parent, opts)
                 local n = m.SIZE and m.SIZE:match("^([%d%.]+)")
                 if n then totalMB = totalMB + tonumber(n) end
             end
-            local sub = tostring(#st.saves) .. " saves"
+            local sub = tostring(#st.saves) .. " " .. getText("UI_MSM_LoadHeader_Saves")
             if totalMB > 0 then
                 local sizeStr = totalMB >= 1024
                     and string.format("%.1f GB", totalMB / 1024)
@@ -54,7 +54,7 @@ function ManualSave.makeLoadHeader(parent, opts)
     ManualSave.makeButton(parent, {
         x=w - TH.PAD - helpBtnW, y=math.floor((h - TH.BUTTON_HGT) / 2),
         w=helpBtnW, h=TH.BUTTON_HGT,
-        label="Help", style="normal",
+        label=getText("UI_MSM_LoadHeader_BtnHelp"), style="normal",
         onClick = function() ManualSave.openHelpScreen() end,
     })
 end

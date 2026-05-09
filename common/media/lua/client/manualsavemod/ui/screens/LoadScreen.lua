@@ -77,13 +77,13 @@ function ManualSave.openLoadScreen(fromMainMenu)
     local footerY = PH - TH.BUTTON_HGT - TH.PAD
     ManualSave.makeButton(p, {
         x=TH.PAD, y=footerY, w=90, h=TH.BUTTON_HGT,
-        label="Back", style="normal",
+        label=getText("UI_MSM_Common_BtnBack"), style="normal",
         onClick = function() ManualSave.closeLoadScreen() end,
     })
     if fromMainMenu then
         ManualSave.makeButton(p, {
             x=TH.PAD + 90 + TH.GAP, y=footerY, w=100, h=TH.BUTTON_HGT,
-            label="Import", style="accent",
+            label=getText("UI_MSM_Load_BtnImport"), style="accent",
             groups={"bat_required"},
             onClick = function()
                 if ManualSave.SignalBus.isBatAlive() == false then return end
@@ -93,12 +93,12 @@ function ManualSave.openLoadScreen(fromMainMenu)
     end
     ManualSave.LoadScreen._btnMore = ManualSave.makeButton(p, {
         x=PW - TH.PAD - 100 - TH.GAP - 160, y=footerY, w=100, h=TH.BUTTON_HGT,
-        label="More", style="normal", enabled=false,
+        label=getText("UI_MSM_Load_BtnMore"), style="normal", enabled=false,
         onClick = function() ManualSave.openMoreScreen() end,
     })
     ManualSave.LoadScreen._btnLoad = ManualSave.makeButton(p, {
         x=PW - TH.PAD - 160, y=footerY, w=160, h=TH.BUTTON_HGT,
-        label="LOAD SAVE", style="primary", enabled=false,
+        label=getText("UI_MSM_Load_BtnLoad"), style="primary", enabled=false,
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             local st = ManualSave.LoadScreen._state
@@ -113,7 +113,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
     local infoX   = TH.PAD + 90 + TH.GAP + 100 + TH.GAP
     local infoBtn = ManualSave.makeButton(p, {
         x=infoX, y=footerY, w=26, h=TH.BUTTON_HGT,
-        label="?", style="normal",
+        label=getText("UI_MSM_Common_BtnHelp"), style="normal",
         onClick = function()
             if ManualSave.openHelpScreen then ManualSave.openHelpScreen("watcher") end
         end,
@@ -128,7 +128,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
     local warnH     = TH.BUTTON_HGT
     local warnPanel = ManualSave.makeLabel(p, {
         x=warnX, y=footerY, w=warnRight - warnX - TH.GAP, h=warnH,
-        text  = "Watcher offline - operations disabled.",
+        text  = getText("UI_MSM_Common_WarnOffline"),
         textY = math.floor((warnH - TH.FONT_HGT_SMALL) / 2),
         r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
     })

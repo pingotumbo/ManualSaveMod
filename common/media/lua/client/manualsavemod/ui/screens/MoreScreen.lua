@@ -70,7 +70,7 @@ function ManualSave.openMoreScreen()
     ManualSave.makeRecoveryFlags(cols.right, { y=ry, w=cols.rightW, save=m, st=st })
 
     ManualSave.UI.evalConditions()
-    ls._btnMore.setLabel("< List")
+    ls._btnMore.setLabel(getText("UI_MSM_Load_BtnListReturn"))
     ls._btnMore.btn.onclick = function(_) ManualSave.closeMoreScreen() end
 end
 
@@ -84,7 +84,7 @@ function ManualSave.closeMoreScreen()
     _coverObj = nil
 
     if ls._btnMore then
-        ls._btnMore.setLabel("More")
+        ls._btnMore.setLabel(getText("UI_MSM_Load_BtnMore"))
         ls._btnMore.btn.onclick = function(_) ManualSave.openMoreScreen() end
     end
 end
