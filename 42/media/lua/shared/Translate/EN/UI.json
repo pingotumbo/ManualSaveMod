@@ -32,6 +32,8 @@
   "UI_MSM_Dialog_FullSaveBody2": "What would you like to do after saving?",
   "UI_MSM_Dialog_BtnConfirm": "Confirm",
   "UI_MSM_Dialog_BtnLoadWithFlags": "Load with flags",
+  "UI_MSM_Load_ConfirmTitle": "Load Save?",
+  "UI_MSM_Load_ConfirmBody": "Unsaved progress in this session will be lost.",
   "UI_MSM_Load_BtnImport": "Import",
   "UI_MSM_Load_BtnMore": "More",
   "UI_MSM_Load_BtnLoad": "LOAD SAVE",

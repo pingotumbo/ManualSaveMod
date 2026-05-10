@@ -32,6 +32,8 @@
   "UI_MSM_Dialog_FullSaveBody2": "Cosa vuoi fare dopo il salvataggio?",
   "UI_MSM_Dialog_BtnConfirm": "Conferma",
   "UI_MSM_Dialog_BtnLoadWithFlags": "Carica con flag",
+  "UI_MSM_Load_ConfirmTitle": "Caricare il salvataggio?",
+  "UI_MSM_Load_ConfirmBody": "I progressi non salvati della sessione corrente andranno persi.",
   "UI_MSM_Load_BtnImport": "Importa",
   "UI_MSM_Load_BtnMore": "Dettagli",
   "UI_MSM_Load_BtnLoad": "CARICA",

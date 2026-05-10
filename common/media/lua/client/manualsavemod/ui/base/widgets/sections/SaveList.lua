@@ -238,9 +238,7 @@ function ManualSave.makeSaveList(parent, opts)
             local st = ManualSave.LoadScreen._state
             if not st or not st.selected or st.selected.CORRUPTED then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
-            local m = st.selected
-            ManualSave.closeLoadScreen()
-            ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
+            ManualSave.LoadScreen.confirmLoad(st.selected)
         end,
     })
     ManualSave.LoadScreen.applyFilter  = applyFilter

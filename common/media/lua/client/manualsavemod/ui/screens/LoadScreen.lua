@@ -27,9 +27,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
                 local st = ManualSave.LoadScreen._state
                 if st and st.selected and not st.selected.CORRUPTED
                     and ManualSave.SignalBus.isBatAlive() ~= false then
-                    local m = st.selected
-                    ManualSave.closeLoadScreen()
-                    ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
+                    ManualSave.LoadScreen.confirmLoad(st.selected)
                 end
             end
             if key == Keyboard.KEY_F2 then
@@ -117,9 +115,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
             if ManualSave.SignalBus.isBatAlive() == false then return end
             local st = ManualSave.LoadScreen._state
             if not st or not st.selected or st.selected.CORRUPTED then return end
-            local m = st.selected
-            ManualSave.closeLoadScreen()
-            ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
+            ManualSave.LoadScreen.confirmLoad(st.selected)
         end,
     })
 
@@ -168,6 +164,22 @@ function ManualSave.openLoadScreen(fromMainMenu)
     ManualSave.UI.evalConditions()
     if getPlayer() then setGameSpeed(0); setShowPausedMessage(false) end
     d.open()
+end
+
+-- Shows a confirmation dialog before loading. Closes LoadScreen on confirm.
+-- m must have GMODE/gameMode, WORLD/world, slot fields.
+function ManualSave.LoadScreen.confirmLoad(m)
+    ManualSave.openConfirmDialog({
+        title   = getText("UI_MSM_Load_ConfirmTitle"),
+        body    = '"' .. ManualSave.slotDisplay(m.slot) .. '"\n'
+                  .. getText("UI_MSM_Load_ConfirmBody"),
+        confirm = getText("UI_MSM_Load_BtnLoad"),
+        danger  = true,
+        onConfirm = function()
+            ManualSave.closeLoadScreen()
+            ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
+        end,
+    })
 end
 
 function ManualSave.closeLoadScreen()
