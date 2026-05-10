@@ -56,6 +56,81 @@ ManualSave.Theme = {
     ITEM_HGT   = 0,    -- save list row height (small + medium text + padding)
 }
 
+-- Text style definitions: name → {r,g,b,a,font,indent,rule,bar}
+-- Used by makeTextBlock, makeScrollText, and other text renderers.
+-- This centralizes all styling logic so translations adapt to any language.
+---@class ManualSave.TextStyle
+---@field r number
+---@field g number
+---@field b number
+---@field a number
+---@field font number  (UIFont.Small/Medium/Large)
+---@field indent number  (pixels)
+---@field rule boolean?  (draw horizontal rule after this line)
+---@field bar table?  (left bar: {r,g,b} for callout styles)
+
+---@type table<string, ManualSave.TextStyle>
+ManualSave.Styles = {}
+
+-- Called during Theme.init() to populate styles with computed font heights.
+function ManualSave.Theme.initStyles()
+    local T = ManualSave.Theme
+    ManualSave.Styles = {
+        header = {
+            r = T.ACCENT_R, g = T.ACCENT_G, b = T.ACCENT_B, a = 0.95,
+            font = UIFont.Small, indent = 0, rule = true,
+        },
+        sub = {
+            r = T.TEXT_R, g = T.TEXT_G, b = T.TEXT_B, a = 1.0,
+            font = UIFont.Small, indent = 0,
+        },
+        body = {
+            r = T.TEXT_R, g = T.TEXT_G, b = T.TEXT_B, a = 0.80,
+            font = UIFont.Small, indent = 8,
+        },
+        dim = {
+            r = T.MUTED_R, g = T.MUTED_G, b = T.MUTED_B, a = 1.0,
+            font = UIFont.Small, indent = 8,
+        },
+        warn = {
+            r = T.DANGER_R, g = T.DANGER_G, b = T.DANGER_B, a = 0.9,
+            font = UIFont.Small, indent = 8,
+        },
+        good = {
+            r = 0.37, g = 0.63, b = 0.35, a = 0.9,
+            font = UIFont.Small, indent = 8,
+        },
+        callout = {
+            r = T.TEXT_R, g = T.TEXT_G, b = T.TEXT_B, a = 0.90,
+            font = UIFont.Small, indent = 14,
+            bar = { r = T.ACCENT_R, g = T.ACCENT_G, b = T.ACCENT_B },
+        },
+        callout_w = {
+            r = T.DANGER_R, g = T.DANGER_G, b = T.DANGER_B, a = 0.85,
+            font = UIFont.Small, indent = 14,
+            bar = { r = T.DANGER_R, g = T.DANGER_G, b = T.DANGER_B },
+        },
+        callout_g = {
+            r = 0.37, g = 0.63, b = 0.35, a = 0.85,
+            font = UIFont.Small, indent = 14,
+            bar = { r = 0.37, g = 0.63, b = 0.35 },
+        },
+        check = {
+            r = T.TEXT_R, g = T.TEXT_G, b = T.TEXT_B, a = 0.80,
+            font = UIFont.Small, indent = 16,
+            bullet_color = { r = T.ACCENT_R, g = T.ACCENT_G, b = T.ACCENT_B },
+        },
+        gloss_t = {
+            r = T.ACCENT_R, g = T.ACCENT_G, b = T.ACCENT_B, a = 1.0,
+            font = UIFont.Small, indent = 0,
+        },
+        gloss_d = {
+            r = T.MUTED_R, g = T.MUTED_G, b = T.MUTED_B, a = 0.90,
+            font = UIFont.Small, indent = 8,
+        },
+    }
+end
+
 -- Called once before any UI is created (e.g. from the first Events.OnGameBoot).
 -- Resolves font-dependent sizes that are only available after the game starts.
 function ManualSave.Theme.init()
@@ -66,7 +141,7 @@ function ManualSave.Theme.init()
     T.FONT_HGT_LARGE  = tm:getFontHeight(UIFont.Large)
     T.BUTTON_HGT      = T.FONT_HGT_SMALL + 10
     T.ITEM_HGT        = T.FONT_HGT_SMALL + T.FONT_HGT_MEDIUM + 18
-end
+    ManualSave.Theme.initStyles()
 
 Events.OnGameBoot.Add(ManualSave.Theme.init)
 

@@ -28,7 +28,6 @@ ManualSave = ManualSave or {}
 --   getSize() returns the current pixel dimensions (updated after each render).
 function ManualSave.makeTextBlock(parent, opts)
     local TH = ManualSave.Theme
-    local GOOD_R, GOOD_G, GOOD_B = 0.37, 0.63, 0.35
 
     local maxW   = opts.w
     local dynW   = opts.dynamicW == true
@@ -106,19 +105,17 @@ function ManualSave.makeTextBlock(parent, opts)
         return y + TH.PAD
     end
 
-    -- Pixel width of the widest rendered line.
+    -- Pixel width of the widest rendered line (lookup style for indent).
     local function measureW(expanded)
         local widest = 0
         for _, ln in ipairs(expanded) do
             local style = ln[2]
             if style and style ~= "" then
-                local tw = getTextManager():MeasureStringX(UIFont.Small, ln[1])
-                local ind = (style == "body" or style == "dim"
-                    or style == "warn" or style == "good") and 8
-                    or (style == "callout" or style == "callout_w"
-                    or style == "callout_g" or style == "check") and 14
-                    or 0
-                widest = math.max(widest, tw + ind + TH.PAD * 2)
+                local s = ManualSave.Styles[style]
+                if s then
+                    local tw = getTextManager():MeasureStringX(s.font, ln[1])
+                    widest = math.max(widest, tw + s.indent + TH.PAD * 2)
+                end
             end
         end
         return math.max(widest, 40)
@@ -161,65 +158,32 @@ function ManualSave.makeTextBlock(parent, opts)
                 local text, style = ln[1], ln[2]
                 if not style or style == "" then
                     y2 = y2 + gapH
-                elseif style == "header" then
-                    if y2 > TH.PAD then y2 = y2 + TH.GAP end
-                    self2:drawText(text, x2, y2,
-                        TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 0.95, UIFont.Small)
-                    y2 = y2 + lh
-                    self2:drawRect(x2, y2, rw - TH.PAD * 2, 1,
-                        0.3, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-                    y2 = y2 + 1 + TH.GAP
-                elseif style == "sub" then
-                    self2:drawText(text, x2, y2,
-                        TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "body" then
-                    self2:drawText(text, x2+8, y2,
-                        TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.80, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "dim" then
-                    self2:drawText(text, x2+8, y2,
-                        TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 1, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "warn" then
-                    self2:drawText(text, x2+8, y2,
-                        TH.DANGER_R, TH.DANGER_G, TH.DANGER_B, 0.9, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "good" then
-                    self2:drawText(text, x2+8, y2,
-                        GOOD_R, GOOD_G, GOOD_B, 0.9, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "callout" then
-                    self2:drawRect(x2+2, y2, 3, lh, 1,
-                        TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-                    self2:drawText(text, x2+14, y2,
-                        TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.90, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "callout_w" then
-                    self2:drawRect(x2+2, y2, 3, lh, 1,
-                        TH.DANGER_R, TH.DANGER_G, TH.DANGER_B)
-                    self2:drawText(text, x2+14, y2,
-                        TH.DANGER_R, TH.DANGER_G, TH.DANGER_B, 0.85, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "callout_g" then
-                    self2:drawRect(x2+2, y2, 3, lh, 1, GOOD_R, GOOD_G, GOOD_B)
-                    self2:drawText(text, x2+14, y2,
-                        GOOD_R, GOOD_G, GOOD_B, 0.85, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "check" then
-                    self2:drawText(">", x2+6, y2,
-                        TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Small)
-                    self2:drawText(text, x2+16, y2,
-                        TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.80, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "gloss_t" then
-                    self2:drawText(text, x2, y2,
-                        TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Small)
-                    y2 = y2 + lh
-                elseif style == "gloss_d" then
-                    self2:drawText(text, x2+8, y2,
-                        TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.90, UIFont.Small)
-                    y2 = y2 + lh
+                else
+                    local s = ManualSave.Styles[style]
+                    if s then
+                        if style == "header" then
+                            if y2 > TH.PAD then y2 = y2 + TH.GAP end
+                            self2:drawText(text, x2, y2, s.r, s.g, s.b, s.a, s.font)
+                            y2 = y2 + lh
+                            if s.rule then
+                                self2:drawRect(x2, y2, rw - TH.PAD * 2, 1, 0.3, s.r, s.g, s.b)
+                                y2 = y2 + 1 + TH.GAP
+                            end
+                        elseif style == "check" then
+                            local bc = s.bullet_color
+                            self2:drawText(">", x2 + 6, y2, bc.r, bc.g, bc.b, 1, s.font)
+                            self2:drawText(text, x2 + s.indent, y2, s.r, s.g, s.b, s.a, s.font)
+                            y2 = y2 + lh
+                        elseif s.bar then
+                            local b = s.bar
+                            self2:drawRect(x2 + 2, y2, 3, lh, 1, b.r, b.g, b.b)
+                            self2:drawText(text, x2 + s.indent, y2, s.r, s.g, s.b, s.a, s.font)
+                            y2 = y2 + lh
+                        else
+                            self2:drawText(text, x2 + s.indent, y2, s.r, s.g, s.b, s.a, s.font)
+                            y2 = y2 + lh
+                        end
+                    end
                 end
             end
         end,
