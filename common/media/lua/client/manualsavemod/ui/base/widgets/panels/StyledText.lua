@@ -33,7 +33,6 @@ ManualSave = ManualSave or {}
 ---@return { panel:ISPanel, resetScroll:fun() }
 function ManualSave.makeScrollText(parent, opts)
     local SCROLL = 10
-    local GOOD_R, GOOD_G, GOOD_B = 0.37, 0.63, 0.35
 
     local w = opts.w
     local h = opts.h
@@ -42,6 +41,18 @@ function ManualSave.makeScrollText(parent, opts)
     local sbDrag    = false
     local sbDragY   = 0
     local sbDragScr = 0
+
+    -- Expand \n within lines (no word-wrap; panel is scrollable).
+    local function expandLines(rawLines)
+        local out = {}
+        for _, ln in ipairs(rawLines) do
+            local text, style = ln[1] or "", ln[2]
+            for seg in (text .. "\n"):gmatch("([^\n]*)\n") do
+                table.insert(out, { seg, style })
+            end
+        end
+        return out
+    end
 
     local function computeH(lines)
         local TH   = ManualSave.Theme
@@ -72,49 +83,32 @@ function ManualSave.makeScrollText(parent, opts)
             local text, style = ln[1], ln[2]
             if not style or style == "" then
                 y2 = y2 + gapH
-            elseif style == "header" then
-                if y2 + scrollY > TH.PAD then y2 = y2 + TH.GAP end
-                self2:drawText(text, x2, y2, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 0.95, UIFont.Small)
-                y2 = y2 + lh
-                self2:drawRect(x2, y2, drawW - TH.PAD * 2, 1, 0.3, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-                y2 = y2 + 1 + TH.GAP
-            elseif style == "sub" then
-                self2:drawText(text, x2, y2, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "body" then
-                self2:drawText(text, x2+8, y2, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.80, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "dim" then
-                self2:drawText(text, x2+8, y2, TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 1, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "warn" then
-                self2:drawText(text, x2+8, y2, TH.DANGER_R, TH.DANGER_G, TH.DANGER_B, 0.9, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "good" then
-                self2:drawText(text, x2+8, y2, GOOD_R, GOOD_G, GOOD_B, 0.9, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "callout" then
-                self2:drawRect(x2+2, y2, 3, lh, 1, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-                self2:drawText(text, x2+14, y2, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.90, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "callout_w" then
-                self2:drawRect(x2+2, y2, 3, lh, 1, TH.DANGER_R, TH.DANGER_G, TH.DANGER_B)
-                self2:drawText(text, x2+14, y2, TH.DANGER_R, TH.DANGER_G, TH.DANGER_B, 0.85, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "callout_g" then
-                self2:drawRect(x2+2, y2, 3, lh, 1, GOOD_R, GOOD_G, GOOD_B)
-                self2:drawText(text, x2+14, y2, GOOD_R, GOOD_G, GOOD_B, 0.85, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "check" then
-                self2:drawText(">", x2+6, y2, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Small)
-                self2:drawText(text, x2+16, y2, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.80, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "gloss_t" then
-                self2:drawText(text, x2, y2, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Small)
-                y2 = y2 + lh
-            elseif style == "gloss_d" then
-                self2:drawText(text, x2+8, y2, TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.90, UIFont.Small)
-                y2 = y2 + lh
+            else
+                local s = ManualSave.Styles[style]
+                if s then
+                    if style == "header" then
+                        if y2 + scrollY > TH.PAD then y2 = y2 + TH.GAP end
+                        self2:drawText(text, x2, y2, s.r, s.g, s.b, s.a, s.font)
+                        y2 = y2 + lh
+                        if s.rule then
+                            self2:drawRect(x2, y2, drawW - TH.PAD * 2, 1, 0.3, s.r, s.g, s.b)
+                            y2 = y2 + 1 + TH.GAP
+                        end
+                    elseif style == "check" then
+                        local bc = s.bullet_color
+                        self2:drawText(">", x2 + 6, y2, bc.r, bc.g, bc.b, 1, s.font)
+                        self2:drawText(text, x2 + s.indent, y2, s.r, s.g, s.b, s.a, s.font)
+                        y2 = y2 + lh
+                    elseif s.bar then
+                        local b = s.bar
+                        self2:drawRect(x2 + 2, y2, 3, lh, 1, b.r, b.g, b.b)
+                        self2:drawText(text, x2 + s.indent, y2, s.r, s.g, s.b, s.a, s.font)
+                        y2 = y2 + lh
+                    else
+                        self2:drawText(text, x2 + s.indent, y2, s.r, s.g, s.b, s.a, s.font)
+                        y2 = y2 + lh
+                    end
+                end
             end
         end
     end
@@ -127,7 +121,7 @@ function ManualSave.makeScrollText(parent, opts)
         border=false,
         prerender = function(self2)
             local TH     = ManualSave.Theme
-            local lines  = opts.getLines()
+            local lines  = expandLines(opts.getLines())
             local totalH = computeH(lines)
             local needSB = totalH > h
             local drawW  = w - (needSB and SCROLL + 2 or 0)
@@ -146,7 +140,7 @@ function ManualSave.makeScrollText(parent, opts)
             end
         end,
         onMouseWheel = function(_, delta)
-            local lines  = opts.getLines()
+            local lines  = expandLines(opts.getLines())
             local totalH = computeH(lines)
             local maxScr = math.max(0, totalH - h)
             if maxScr == 0 then return false end
@@ -155,7 +149,7 @@ function ManualSave.makeScrollText(parent, opts)
             return true
         end,
         onMouseDown = function(_, mx, my)
-            local lines  = opts.getLines()
+            local lines  = expandLines(opts.getLines())
             local totalH = computeH(lines)
             if totalH <= h then return end
             if mx < w - SCROLL then return end
@@ -169,7 +163,7 @@ function ManualSave.makeScrollText(parent, opts)
             if not isMouseButtonDown(0) then ---@diagnostic disable-line
                 sbDrag = false; return
             end
-            local lines  = opts.getLines()
+            local lines  = expandLines(opts.getLines())
             local totalH = computeH(lines)
             local maxScr = totalH - h
             if maxScr <= 0 then sbDrag = false; return end

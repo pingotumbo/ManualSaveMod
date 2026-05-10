@@ -142,6 +142,7 @@ function ManualSave.Theme.init()
     T.BUTTON_HGT      = T.FONT_HGT_SMALL + 10
     T.ITEM_HGT        = T.FONT_HGT_SMALL + T.FONT_HGT_MEDIUM + 18
     ManualSave.Theme.initStyles()
+end
 
 Events.OnGameBoot.Add(ManualSave.Theme.init)
 
