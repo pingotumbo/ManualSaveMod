@@ -169,10 +169,14 @@ end
 -- Shows a confirmation dialog before loading. Closes LoadScreen on confirm.
 -- m must have GMODE/gameMode, WORLD/world, slot fields.
 function ManualSave.LoadScreen.confirmLoad(m)
+    local fromMainMenu = ManualSave.LoadScreen._state and ManualSave.LoadScreen._state.fromMainMenu
+    local bodyKey  = fromMainMenu and "UI_MSM_Load_ConfirmBodyMainMenu" or "UI_MSM_Load_ConfirmBodyInGame"
+    local bodyText = getText(bodyKey)
+    local body     = '"' .. ManualSave.slotDisplay(m.slot) .. '"'
+    if bodyText ~= "" then body = body .. "\n" .. bodyText end
     ManualSave.openConfirmDialog({
         title   = getText("UI_MSM_Load_ConfirmTitle"),
-        body    = '"' .. ManualSave.slotDisplay(m.slot) .. '"\n'
-                  .. getText("UI_MSM_Load_ConfirmBody"),
+        body    = body,
         confirm = getText("UI_MSM_Load_BtnLoad"),
         danger  = true,
         onConfirm = function()
