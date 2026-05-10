@@ -80,10 +80,11 @@ Events.OnGameStart.Add(function()
     ms.saveGameOption.fade        = UITransition.new()
     ms.saveGameOption.fade:setFadeIn(false)
     -- Override prerender: enforce correct width every frame before vanilla draws the hover rect.
+    -- Must call setWidth() (Java object), not assign self.width (Lua property only).
     local vanillaPrerender = MainScreen.prerenderBottomPanelLabel
     local saveTargetW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnSave")) + 30
     ms.saveGameOption.prerender = function(self2)
-        self2.width = math.max(self2.width, saveTargetW)
+        self2:setWidth(math.max(self2:getWidth(), saveTargetW))
         vanillaPrerender(self2)
     end
     bp:addChild(ms.saveGameOption)
@@ -97,7 +98,7 @@ Events.OnGameStart.Add(function()
     ms.loadGameOption.fade:setFadeIn(false)
     local loadTargetW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnLoad")) + 30
     ms.loadGameOption.prerender = function(self2)
-        self2.width = math.max(self2.width, loadTargetW)
+        self2:setWidth(math.max(self2:getWidth(), loadTargetW))
         vanillaPrerender(self2)
     end
     bp:addChild(ms.loadGameOption)
@@ -112,6 +113,8 @@ Events.OnGameStart.Add(function()
         if child.Type == "ISLabel" then child:setWidth(maxW) end
     end
     bp:setWidth(maxW)
+    -- Seed maxMenuItemWidth so PZ's render-loop normalization doesn't shrink our labels.
+    ms.maxMenuItemWidth = math.max(ms.maxMenuItemWidth or 0, maxW)
 
     print("[ManualSaveMod] Pause menu: SAVE GAME + LOAD GAME injected.")
 end)

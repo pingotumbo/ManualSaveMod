@@ -47,11 +47,11 @@ Events.OnMainMenuEnter.Add(function()
     ms.loadManualSaveOption.fade        = UITransition.new()
     ms.loadManualSaveOption.fade:setFadeIn(false)
     -- Override prerender: enforce correct width every frame before vanilla draws the hover rect.
-    -- PZ resets self.width after addChild, so setWidth() alone is not reliable.
+    -- Must call setWidth() (Java object), not assign self.width (Lua property only).
     local targetW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_MainMenu_BtnLoad")) + 30
     local vanillaPrerender = MainScreen.prerenderBottomPanelLabel
     ms.loadManualSaveOption.prerender = function(self2)
-        self2.width = math.max(self2.width, targetW)
+        self2:setWidth(math.max(self2:getWidth(), targetW))
         vanillaPrerender(self2)
     end
     bp:addChild(ms.loadManualSaveOption)
@@ -65,6 +65,8 @@ Events.OnMainMenuEnter.Add(function()
         if child.Type == "ISLabel" then child:setWidth(maxW) end
     end
     bp:setWidth(maxW)
+    -- Seed maxMenuItemWidth so PZ's render-loop normalization doesn't shrink our label.
+    ms.maxMenuItemWidth = math.max(ms.maxMenuItemWidth or 0, maxW)
 
     print("[ManualSaveMod] Main menu: LOAD MANUAL SAVE injected.")
 end)
