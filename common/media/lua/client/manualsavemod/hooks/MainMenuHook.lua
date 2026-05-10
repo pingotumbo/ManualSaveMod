@@ -46,15 +46,18 @@ Events.OnMainMenuEnter.Add(function()
     ms.loadManualSaveOption.onMouseDown = onLoadManualSaveClick
     ms.loadManualSaveOption.fade        = UITransition.new()
     ms.loadManualSaveOption.fade:setFadeIn(false)
-    ms.loadManualSaveOption.prerender   = MainScreen.prerenderBottomPanelLabel
+    -- Override prerender: enforce correct width every frame before vanilla draws the hover rect.
+    -- PZ resets self.width after addChild, so setWidth() alone is not reliable.
+    local targetW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_MainMenu_BtnLoad")) + 30
+    local vanillaPrerender = MainScreen.prerenderBottomPanelLabel
+    ms.loadManualSaveOption.prerender = function(self2)
+        self2.width = math.max(self2.width, targetW)
+        vanillaPrerender(self2)
+    end
     bp:addChild(ms.loadManualSaveOption)
 
-    -- Seed maxW from our label's measured text so getWidth() unreliability can't shrink it.
-    local ourW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_MainMenu_BtnLoad")) + 30
-    ms.loadManualSaveOption:setWidth(ourW)
-
-    -- Re-normalize all ISLabel widths to match vanilla
-    local maxW = ourW
+    -- Re-normalize all ISLabel widths to match vanilla (our label self-corrects via prerender)
+    local maxW = targetW
     for _, child in pairs(bp:getChildren()) do
         if child.Type == "ISLabel" then maxW = math.max(maxW, child:getWidth()) end
     end

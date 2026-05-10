@@ -79,7 +79,13 @@ Events.OnGameStart.Add(function()
     ms.saveGameOption.onMouseDown = onSaveGameClick
     ms.saveGameOption.fade        = UITransition.new()
     ms.saveGameOption.fade:setFadeIn(false)
-    ms.saveGameOption.prerender   = MainScreen.prerenderBottomPanelLabel
+    -- Override prerender: enforce correct width every frame before vanilla draws the hover rect.
+    local vanillaPrerender = MainScreen.prerenderBottomPanelLabel
+    local saveTargetW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnSave")) + 30
+    ms.saveGameOption.prerender = function(self2)
+        self2.width = math.max(self2.width, saveTargetW)
+        vanillaPrerender(self2)
+    end
     bp:addChild(ms.saveGameOption)
 
     -- "LOAD GAME" one step below
@@ -89,17 +95,15 @@ Events.OnGameStart.Add(function()
     ms.loadGameOption.onMouseDown = onLoadGameClick
     ms.loadGameOption.fade        = UITransition.new()
     ms.loadGameOption.fade:setFadeIn(false)
-    ms.loadGameOption.prerender   = MainScreen.prerenderBottomPanelLabel
+    local loadTargetW = getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnLoad")) + 30
+    ms.loadGameOption.prerender = function(self2)
+        self2.width = math.max(self2.width, loadTargetW)
+        vanillaPrerender(self2)
+    end
     bp:addChild(ms.loadGameOption)
 
-    -- Seed maxW from our labels' measured text so getWidth() unreliability can't shrink them.
-    local ourW = math.max(
-        getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnSave")),
-        getTextManager():MeasureStringX(UIFont.Large, getText("UI_MSM_PauseMenu_BtnLoad"))) + 30
-    ms.saveGameOption:setWidth(ourW)
-    ms.loadGameOption:setWidth(ourW)
-
-    -- Re-normalize all ISLabel widths to match vanilla
+    -- Re-normalize all ISLabel widths to match vanilla (our labels self-correct via prerender)
+    local ourW = math.max(saveTargetW, loadTargetW)
     local maxW = ourW
     for _, child in pairs(bp:getChildren()) do
         if child.Type == "ISLabel" then maxW = math.max(maxW, child:getWidth()) end
