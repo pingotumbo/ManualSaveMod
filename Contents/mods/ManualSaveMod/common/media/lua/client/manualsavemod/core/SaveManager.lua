@@ -84,6 +84,10 @@ end
 local function resolveGmode(info)
     return ManualSave.SaveManager._sessionGmode or info.gameMode
 end
+-- Returns the actual PZ live save folder name (may differ from resolveWorld after a load).
+local function resolveLiveWorld(info)
+    return info.saveName
+end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
@@ -97,8 +101,9 @@ function ManualSave.SaveManager.quickSave(slotName, onDone)
         if onDone then pcall(onDone, "ERROR") end
         return
     end
-    local gmode = resolveGmode(info)
-    local world = resolveWorld(info)
+    local gmode     = resolveGmode(info)
+    local world     = resolveWorld(info)
+    local liveWorld = resolveLiveWorld(info)
 
     clearScreenshotDone()
     requestScreenshot(slotName)
@@ -112,8 +117,9 @@ function ManualSave.SaveManager.quickSave(slotName, onDone)
             clearScreenshotDone()
             local meta = ManualSave.MetaCache.collectLiveData("QUICK")
             ManualSave.MetaCache.write(gmode, world, slotName, meta)
-            ManualSave.SignalBus.send("SAVE",
-                { GMODE=gmode, WORLD=world, SLOT=slotName },
+            local params = { GMODE=gmode, WORLD=world, SLOT=slotName }
+            if liveWorld ~= world then params.LIVE_WORLD = liveWorld end
+            ManualSave.SignalBus.send("SAVE", params,
                 function(status) if onDone then pcall(onDone, status) end end)
         end
     end
@@ -127,8 +133,9 @@ end
 function ManualSave.SaveManager.fullSave(slotName, reenter)
     local info = currentSaveInfo()
     if not info then return end
-    local gmode = resolveGmode(info)
-    local world = resolveWorld(info)
+    local gmode     = resolveGmode(info)
+    local world     = resolveWorld(info)
+    local liveWorld = resolveLiveWorld(info)
 
     local meta = ManualSave.MetaCache.collectLiveData("FULL")
     ManualSave.MetaCache.write(gmode, world, slotName, meta)
@@ -145,7 +152,9 @@ function ManualSave.SaveManager.fullSave(slotName, reenter)
         if checkScreenshotDone() or frames >= 300 then
             Events.OnRenderTick.Remove(handler)
             clearScreenshotDone()
-            ManualSave.SignalBus.send("SAVE", { GMODE=gmode, WORLD=world, SLOT=slotName })
+            local params = { GMODE=gmode, WORLD=world, SLOT=slotName }
+            if liveWorld ~= world then params.LIVE_WORLD = liveWorld end
+            ManualSave.SignalBus.send("SAVE", params)
             local ms = MainScreen.instance
             if ms and ms:isVisible() then
                 ms:setVisible(false)

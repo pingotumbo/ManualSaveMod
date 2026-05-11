@@ -6,7 +6,7 @@
 -- Index file path: ManualSave_Index.txt   (written by .bat, read-only from Lua)
 --
 -- Meta file fields (all optional except the four identity fields):
---   GMODE, WORLD, SLOT, DATE, TYPE, MAP, MODS, ALIVE, DAY, PLAYTIME, SEED, SIZE
+--   GMODE, WORLD, SLOT, DATE, TYPE, MAP, MODS, DAY, PLAYTIME, SEED, SIZE
 ---@diagnostic disable: undefined-global
 
 ManualSave           = ManualSave or {}
@@ -90,7 +90,6 @@ function ManualSave.MetaCache.write(gmode, world, slot, data)
     w:write("SLOT="  .. slot                 .. "\r\n")
     w:write("MAP="   .. (d.MAP   or "")      .. "\r\n")
     w:write("MODS="  .. (d.MODS  or "")      .. "\r\n")
-    w:write("ALIVE=" .. (d.ALIVE or "ALIVE") .. "\r\n")
     if d.DAY      then w:write("DAY="      .. d.DAY      .. "\r\n") end
     if d.PLAYTIME then w:write("PLAYTIME=" .. d.PLAYTIME .. "\r\n") end
     if d.SEED     then w:write("SEED="     .. d.SEED     .. "\r\n") end
@@ -169,7 +168,6 @@ function ManualSave.MetaCache.collectLiveData(saveType)
             local hrs   = math.floor(total % 24)
             d.PLAYTIME  = days > 0 and string.format("%dd %dh", days, hrs) or string.format("%dh", hrs)
         end
-        if p.isDead and p:isDead() then d.ALIVE = "DEAD" else d.ALIVE = "ALIVE" end
     end)
 
     pcall(function()

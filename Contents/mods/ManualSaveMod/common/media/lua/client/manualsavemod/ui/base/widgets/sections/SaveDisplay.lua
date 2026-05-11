@@ -27,14 +27,6 @@ function ManualSave.makeSaveBanner(parent, opts)
             bn:drawText((slotDisplay and slotDisplay(m.slot or "") or (m.slot or "")):sub(1,55),
                 16, bn.height - TH.FONT_HGT_LARGE - 6,
                 TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Large)
-            local alive = m.ALIVE or m.alive
-            if alive then
-                local badge = (alive == "DEAD") and "DEAD" or "ALIVE"
-                local bR, bG, bB = 0.30, 0.72, 0.36
-                if badge == "DEAD" then bR, bG, bB = TH.DANGER_R, TH.DANGER_G, TH.DANGER_B end
-                ManualSave.Draw.badge(bn, bn.width - 60, 10, badge,
-                    badge == "DEAD" and "danger" or { r=bR, g=bG, b=bB })
-            end
         end,
     })
 end
