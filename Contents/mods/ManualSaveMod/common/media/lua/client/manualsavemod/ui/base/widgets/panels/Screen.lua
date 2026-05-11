@@ -18,7 +18,7 @@ ManualSave = ManualSave or {}
 --   onKeyRelease fun(p, key)?
 --   update       fun(p)?
 --
----@param opts { w:number, h:number, x:number?, y:number?, onClose:fun()? }
+---@param opts { w:number, h:number, x:number?, y:number?, onClose:fun()?, onKeyRelease:fun(p:any,key:number)?, onFocus:fun(p:any,x:number,y:number)?, onLostFocus:fun(p:any,x:number,y:number)?, onKeyPressed:fun(p:any,key:number)?, update:fun(p:any)? }
 ---@return { panel:ISPanel, titleH:number, open:fun(), close:fun(), onClose:fun(fn:fun()) }
 function ManualSave.makeScreenPanel(opts)
     local TH = ManualSave.Theme
@@ -50,6 +50,7 @@ function ManualSave.makeScreenPanel(opts)
     outer:addChild(inner)
 
     local callbacks = {}
+    local closing   = false
 
     local obj = {
         panel  = inner,
@@ -68,6 +69,8 @@ function ManualSave.makeScreenPanel(opts)
     end
 
     function obj.close()
+        if closing then return end
+        closing = true
         outer:setVisible(false)
         outer:removeFromUIManager()
         for _, fn in ipairs(callbacks) do pcall(fn) end
@@ -76,13 +79,15 @@ function ManualSave.makeScreenPanel(opts)
     if opts.onFocus      then inner.onFocus      = opts.onFocus      end
     if opts.onLostFocus  then inner.onLostFocus  = opts.onLostFocus  end
     if opts.onKeyPressed then inner.onKeyPressed = opts.onKeyPressed end
-    if opts.onKeyRelease then
-        -- Key events in PZ go to the topmost UIManager element (outer).
-        -- Forward them to the opts handler so the load screen can handle ESC etc.
-        outer.onKeyRelease = function(_, key) opts.onKeyRelease(_, key) end
-        inner.onKeyRelease = opts.onKeyRelease
-    end
     if opts.update       then inner.update       = opts.update       end
+
+    -- opts.onKeyRelease runs first; ESC closes the screen by default after
+    local function keyHandler(_, key)
+        if opts.onKeyRelease then opts.onKeyRelease(_, key) end
+        if key == Keyboard.KEY_ESCAPE then obj.close() end
+    end
+    outer.onKeyRelease = keyHandler
+    inner.onKeyRelease = keyHandler
 
     if opts.onClose then obj.onClose(opts.onClose) end
 

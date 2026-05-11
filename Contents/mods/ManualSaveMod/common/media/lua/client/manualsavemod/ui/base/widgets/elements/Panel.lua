@@ -212,7 +212,7 @@ function ManualSave.makeSaveDetailView(parent, opts)
     local function drawDetail(dp)
         local st = ManualSave.LoadScreen._state
         if not st or not st.selected then
-            dp:drawText("\226\134\144 Select a save", 12, 16,
+            dp:drawText("Select a save", 12, 16,
                 TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.40, UIFont.Small)
             return
         end

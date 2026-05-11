@@ -13,8 +13,11 @@
 
 ## Rules
 
-- Keep `\n` in place — it is a line break, not visible text.
-- Keep `%1`, `%2` etc. — they are runtime placeholders.
+- Keep `\n` in place   it is a line break, not visible text.
+- Keep `%1`, `%2` etc.  
+
+
+ they are runtime placeholders.
 - Keep the JSON syntax intact (quotes, commas).
 
 ## Language codes

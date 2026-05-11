@@ -23,15 +23,15 @@ function ManualSave.openLoadScreen(fromMainMenu)
     local d = ManualSave.makeScreenPanel({
         w=PW, h=PH,
         onKeyRelease = function(_, key)
-            if key == Keyboard.KEY_RETURN then
-                local st = ManualSave.LoadScreen._state
+            local st = ManualSave.LoadScreen._state
+            local fromMM = st and st.fromMainMenu
+            if key == Keyboard.KEY_RETURN and fromMM then
                 if st and st.selected and not st.selected.CORRUPTED
                     and ManualSave.SignalBus.isBatAlive() ~= false then
                     ManualSave.LoadScreen.confirmLoad(st.selected)
                 end
             end
-            if key == Keyboard.KEY_F2 then
-                local st = ManualSave.LoadScreen._state
+            if key == Keyboard.KEY_F2 and fromMM then
                 if st and st.selected then
                     local fn = ManualSave.LoadScreen._beginRename
                     if fn then fn() end
@@ -159,6 +159,18 @@ function ManualSave.openLoadScreen(fromMainMenu)
         end
     end })
 
+    d.onClose(function()
+        if not ManualSave.LoadScreen._screen then return end
+        local wasInGame = getPlayer() ~= nil
+        ManualSave.LoadScreen._screen = nil
+        ManualSave.LoadScreen._state  = nil
+        ManualSave.UI.clearGroup("bat_required")
+        ManualSave.closeMoreScreen()
+        if ManualSave.closeImportScreen then ManualSave.closeImportScreen() end
+        if ManualSave.closeHelpScreen   then ManualSave.closeHelpScreen()   end
+        if wasInGame then setGameSpeed(1); setShowPausedMessage(true) end
+    end)
+
     ManualSave.LoadScreen._state.saves = ManualSave.SaveManager.listSaves()
     ManualSave.LoadScreen.applyFilter()
     ManualSave.UI.evalConditions()
@@ -189,17 +201,7 @@ end
 function ManualSave.closeLoadScreen()
     local d = ManualSave.LoadScreen._screen
     if not d then return end
-    ManualSave.UI.clearGroup("bat_required")
-    local wasInGame = getPlayer() ~= nil
-    ManualSave.closeMoreScreen()
-    if ManualSave.closeImportScreen then ManualSave.closeImportScreen() end
     d.close()
-    ManualSave.LoadScreen._screen = nil
-    ManualSave.LoadScreen._state  = nil
-    if wasInGame then
-        setGameSpeed(1)
-        setShowPausedMessage(true)
-    end
 end
 
 print("[ManualSaveMod] UI/Screens/LoadScreen.lua loaded.")

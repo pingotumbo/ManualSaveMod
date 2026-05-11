@@ -84,6 +84,11 @@ function ManualSave.makePopupPanel(opts)
         for _, fn in ipairs(callbacks) do pcall(fn) end
     end
 
+    overlay.update = function(self2)
+        ISPanel.update(self2)
+        self2:bringToTop()
+    end
+
     function obj.open()
         overlay:addToUIManager()
         overlay:setVisible(true)

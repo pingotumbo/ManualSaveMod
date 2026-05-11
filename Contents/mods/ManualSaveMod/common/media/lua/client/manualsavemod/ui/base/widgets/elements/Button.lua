@@ -214,12 +214,21 @@ function ManualSave.makeInfoButton(parent, opts)
             colR, colG, colB, alpha, UIFont.Small)
     end
 
+    local _activePopup = nil
+
     btn.onclick = function(_)
+        if _activePopup then
+            pcall(_activePopup.close)
+            _activePopup = nil
+            return
+        end
         local ax = btn:getAbsoluteX() + sz + 4
         local ay = btn:getAbsoluteY()
         local popup = ManualSave.makePopupPanel({
             w=popW, h=popH, anchorX=ax, anchorY=ay,
         })
+        _activePopup = popup
+        popup.onClose(function() _activePopup = nil end)
         local pp = popup.panel
         pp.prerender = function(self2)
             ISPanel.prerender(self2)

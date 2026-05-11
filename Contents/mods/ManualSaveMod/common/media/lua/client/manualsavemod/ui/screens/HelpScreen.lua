@@ -21,9 +21,13 @@ local NAV_W = 200
 
 -- GETTING STARTED ──────────────────────────────────────────────────────────────
 
+local function modTitle()
+    return "Manual Save & Slot Manager [B42]  v1.1.1"
+end
+
 local function start_lines()
     return {
-        { getText("UI_MSM_Help_Start_01"),  "dim"       },
+        { modTitle(),  "dim"       },
         { "",                                           },
         { getText("UI_MSM_Help_Start_02"),  "header"    },
         { getText("UI_MSM_Help_Start_03"),  "body"      },
@@ -259,9 +263,6 @@ local function loadscreen_lines()
         { getText("UI_MSM_Help_Loadscreen_11"), "check"    },
         { "",                                              },
         { getText("UI_MSM_Help_Loadscreen_12"), "callout_w"},
-        { "",                                              },
-        { getText("UI_MSM_Help_Loadscreen_13"), "header"   },
-        { getText("UI_MSM_Help_Loadscreen_14"), "body"     },
     }
 end
 
@@ -319,9 +320,6 @@ local function rename_lines()
         { getText("UI_MSM_Help_Rename_03"), "header"       },
         { getText("UI_MSM_Help_Rename_04"), "body"         },
         { getText("UI_MSM_Help_Rename_05"), "dim"          },
-        { "",                                              },
-        { getText("UI_MSM_Help_Rename_06"), "header"       },
-        { getText("UI_MSM_Help_Rename_07"), "body"         },
         { "",                                              },
         { getText("UI_MSM_Help_Rename_08"), "header"       },
         { getText("UI_MSM_Help_Rename_09"), "body"         },

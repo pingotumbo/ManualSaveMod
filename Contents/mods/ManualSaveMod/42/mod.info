@@ -1,0 +1,9 @@
+name=Manual Save Mod [B42]
+id=ManualSaveMod
+description=Adds buttons to manually save and load your games, just like in classic video games.
+poster=poster.png
+icon=icon.png
+modversion=1.1.1
+versionMin=42.0.0
+author=strisciapedonale
+workshopid=3721602150

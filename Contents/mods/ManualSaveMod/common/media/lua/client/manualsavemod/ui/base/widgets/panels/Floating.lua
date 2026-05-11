@@ -134,8 +134,15 @@ function ManualSave.makeFloatingPanel(opts)
     if opts.onFocus      then p.onFocus      = opts.onFocus      end
     if opts.onLostFocus  then p.onLostFocus  = opts.onLostFocus  end
     if opts.onKeyPressed then p.onKeyPressed = opts.onKeyPressed end
-    if opts.update       then p.update       = opts.update       end
     if opts.render       then p.render       = opts.render       end
+
+    -- Always stay on top; wrap opts.update if provided
+    local _userUpdate = opts.update
+    p.update = function(self2)
+        ISPanel.update(self2)
+        self2:bringToTop()
+        if _userUpdate then _userUpdate(self2) end
+    end
     if opts.noBorder     then p.borderColor  = { r=0, g=0, b=0, a=0 } end
 
     if opts.onClose then obj.onClose(opts.onClose) end
