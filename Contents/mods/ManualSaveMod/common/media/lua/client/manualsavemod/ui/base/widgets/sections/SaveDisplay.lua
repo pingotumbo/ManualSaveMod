@@ -75,7 +75,7 @@ function ManualSave.makeWorldStateSection(parent, opts)
     local y = sec.headerH
 
     ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,    w=x2-x1-4,     label=getText("UI_MSM_Display_World"), getValue=function() return m.world or "--" end })
-    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,    w=opts.w-x2-4, label=getText("UI_MSM_Display_Day"),   getValue=function() return m.DAY and ("Day "..m.DAY) or "--" end })
+    ManualSave.makeFieldPair(sec.panel, { x=x2, y=y,    w=opts.w-x2-4, label=getText("UI_MSM_Display_Day"),   getValue=function() return m.DAY and tostring(m.DAY) or "--" end })
     y = y + lh
     ManualSave.makeFieldPair(sec.panel, { x=x1, y=y,    w=opts.w-x1-4, label=getText("UI_MSM_Display_Seed"),  getValue=function() return m.SEED or "--" end })
 
@@ -125,7 +125,7 @@ function ManualSave.makeMapModsLists(parent, opts)
 
     -- MAP expand popup
     local mapExpand = ManualSave.makeExpandPanel({
-        title   = "MAP  (" .. #mapEntries .. ")",
+        title   = getText("UI_MSM_Display_MapCount", tostring(#mapEntries)),
         w       = MAP_W, x = mapX,
         items   = mapEntries,
         drawRow = function(pb, entry, ex, ey, ew, eh, sel, _)
@@ -138,7 +138,7 @@ function ManualSave.makeMapModsLists(parent, opts)
     -- MAP section: standard header + compact scrolllist + expand button
     local mapSec = ManualSave.makeSectionPanel(parent, {
         x=0, y=opts.y, w=halfW, h=secH,
-        label = "MAP (" .. #mapEntries .. ")",
+        label = getText("UI_MSM_Display_MapCount", tostring(#mapEntries)),
     })
     ManualSave.makeButton(mapSec.panel, {
         x=halfW - btnSz - 4, y=btnY,
@@ -159,7 +159,7 @@ function ManualSave.makeMapModsLists(parent, opts)
     -- MODS expand popup
     local modItems = #mods > 0 and mods or {{ name="(none)" }}
     local modsExpand = ManualSave.makeExpandPanel({
-        title   = "MODS  (" .. #mods .. ")",
+        title   = getText("UI_MSM_Display_ModsCount", tostring(#mods)),
         w       = MODS_W, x = modsX,
         items   = modItems,
         drawRow = function(pb, mod, ex, ey, ew, eh, sel, _)
@@ -175,7 +175,7 @@ function ManualSave.makeMapModsLists(parent, opts)
     -- MODS section: standard header + compact scrolllist + expand button
     local modsSec = ManualSave.makeSectionPanel(parent, {
         x=halfW + halfGap, y=opts.y, w=modsW, h=secH,
-        label = "MODS (" .. #mods .. ")",
+        label = getText("UI_MSM_Display_ModsCount", tostring(#mods)),
     })
     ManualSave.makeButton(modsSec.panel, {
         x=modsW - btnSz - 4, y=btnY,

@@ -212,7 +212,7 @@ function ManualSave.makeSaveDetailView(parent, opts)
     local function drawDetail(dp)
         local st = ManualSave.LoadScreen._state
         if not st or not st.selected then
-            dp:drawText("Select a save", 12, 16,
+            dp:drawText(getText("UI_MSM_Detail_NoSelection"), 12, 16,
                 TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.40, UIFont.Small)
             return
         end
@@ -246,11 +246,11 @@ function ManualSave.makeSaveDetailView(parent, opts)
                 TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, fa,        UIFont.Small)
         end
 
-        field("GAME MODE", m.GMODE or m.gameMode or "--", 0,     y)
-        field("WORLD",     m.world or m.WORLD     or "--", halfW, y)
+        field(getText("UI_MSM_Display_GameMode"), m.GMODE or m.gameMode or "--", 0,     y)
+        field(getText("UI_MSM_Display_World"),    m.world or m.WORLD     or "--", halfW, y)
         y = y + fh
-        field("PLAYTIME",  m.PLAYTIME or "--", 0,     y)
-        field("SIZE",      m.SIZE     or "--", halfW, y)
+        field(getText("UI_MSM_Display_Playtime"), m.PLAYTIME or "--", 0,     y)
+        field(getText("UI_MSM_Display_Size"),     m.SIZE     or "--", halfW, y)
         y = y + fh
 
         if m.CORRUPTED then
@@ -280,9 +280,9 @@ function ManualSave.makeSaveDetailView(parent, opts)
         local colW  = halfW - 8
         local maxR  = 4
 
-        dp:drawText("MAP (" .. #mapEntries .. ")", 0, y,
+        dp:drawText(getText("UI_MSM_Display_MapCount",  tostring(#mapEntries)), 0,     y,
             TH.DIM_R, TH.DIM_G, TH.DIM_B, fa * 0.8, UIFont.Small)
-        dp:drawText("MODS (" .. #mods .. ")", halfW, y,
+        dp:drawText(getText("UI_MSM_Display_ModsCount", tostring(#mods)),       halfW, y,
             TH.DIM_R, TH.DIM_G, TH.DIM_B, fa * 0.8, UIFont.Small)
         y = y + TH.FONT_HGT_SMALL + 4
 
@@ -299,11 +299,11 @@ function ManualSave.makeSaveDetailView(parent, opts)
             y = y + rowH
         end
         if #mapEntries > maxR then
-            dp:drawText("+" .. (#mapEntries - maxR) .. " more", 4, y,
+            dp:drawText(getText("UI_MSM_Display_MoreCount", tostring(#mapEntries - maxR)), 4, y,
                 TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, fa * 0.6, UIFont.Small)
         end
         if #mods > maxR then
-            dp:drawText("+" .. (#mods - maxR) .. " more", halfW + 4, y,
+            dp:drawText(getText("UI_MSM_Display_MoreCount", tostring(#mods - maxR)), halfW + 4, y,
                 TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, fa * 0.6, UIFont.Small)
         end
     end

@@ -36,6 +36,24 @@ function ManualSave.nextCopyName(baseSlot, saves)
     return base
 end
 
+-- Safe wrapper around getText. Returns the raw key string (never nil) if the
+-- key is missing from the current language, and logs a warning so missing
+-- translations are visible in console.txt.
+-- Usage: replace getText("KEY") with ManualSave.t("KEY") in new screens.
+---@param key string
+---@return string
+function ManualSave.t(key, ...)
+    local ok, v = pcall(getText, key, ...)
+    if not ok or v == nil then
+        print("[ManualSaveMod] getText error for key: " .. tostring(key))
+        return key
+    end
+    if v == key then
+        print("[ManualSaveMod] Missing translation: " .. key)
+    end
+    return v
+end
+
 -- Returns the minimum button pixel width to display label with standard horizontal padding.
 -- label: already-translated string.  minW: optional hard floor.
 function ManualSave.textBtnW(label, minW)

@@ -7,6 +7,7 @@ ManualSave            = ManualSave or {}
 ManualSave.SaveManager = ManualSave.SaveManager or {}
 
 local PENDING_FILE  = "ManualSave_Pending.txt"
+local SESSION_FILE  = "ManualSave_Session.txt"
 local SCREEN_REQ    = "ManualSave_ScreenReq.txt"
 local SCREEN_DONE   = "ManualSave_ScreenDone.txt"
 
@@ -29,6 +30,17 @@ local function writePending(slotName, gmode, saveName, reenter)
     w:close()
 end
 
+local function writePendingLoad(slot, gmode, world)
+    local w = getFileWriter(PENDING_FILE, true, false)
+    if not w then return end
+    w:write("SLOT="     .. slot  .. "\r\n")
+    w:write("GMODE="    .. gmode .. "\r\n")
+    w:write("SAVENAME=" .. world .. "\r\n")
+    w:write("REENTER=1\r\n")
+    w:write("PENDINGLOAD=1\r\n")
+    w:close()
+end
+
 local function readAndClearPending()
     local r = getFileReader(PENDING_FILE, true)
     if not r then return nil end
@@ -44,7 +56,7 @@ local function readAndClearPending()
     local w = getFileWriter(PENDING_FILE, true, false)
     if w then w:close() end
     if not data.SLOT then return nil end
-    return { slotName=data.SLOT, gameMode=data.GMODE, saveName=data.SAVENAME, reenter=data.REENTER=="1" }
+    return { slotName=data.SLOT, gameMode=data.GMODE, saveName=data.SAVENAME, reenter=data.REENTER=="1", pendingLoad=data.PENDINGLOAD=="1" }
 end
 
 -- ── Screenshot helpers (Screenshotter.exe protocol, separate from SignalBus) ──
@@ -68,10 +80,48 @@ local function clearScreenshotDone()
 end
 
 -- ── Session tracking ─────────────────────────────────────────────────────────
--- When loading via ManualSave, PZ world name is set to the slot name.
--- We store the original world/gmode here so saves use the correct paths.
+-- When loading via ManualSave, PZ renames the live folder to the slot name.
+-- We persist the original world/gmode to a file so they survive OnMainMenuEnter,
+-- which fires on both genuine main-menu returns AND the death/new-character screen.
+-- resolveWorld/resolveGmode restore from file when in-memory values are nil,
+-- validating that info.saveName still matches the slot we loaded (so a native
+-- load of a different world never picks up a stale session).
 ManualSave.SaveManager._sessionWorld = nil
 ManualSave.SaveManager._sessionGmode = nil
+
+local function writeSession(slot, world, gmode)
+    local w = getFileWriter(SESSION_FILE, true, false)
+    if not w then return end
+    w:write("SLOT="  .. slot  .. "\r\n")
+    w:write("WORLD=" .. world .. "\r\n")
+    w:write("GMODE=" .. gmode .. "\r\n")
+    w:close()
+end
+
+local function readSession()
+    local r = getFileReader(SESSION_FILE, true)
+    if not r then return nil end
+    local data = {}
+    while true do
+        local line = r:readLine()
+        if line == nil then break end
+        line = line:match("^%s*(.-)%s*$")
+        local k, v = line:match("^(.-)=(.+)$")
+        if k and v then data[k] = v end
+    end
+    r:close()
+    if not data.SLOT then return nil end
+    return { slot=data.SLOT, world=data.WORLD, gmode=data.GMODE }
+end
+
+local function restoreSessionIfNeeded(info)
+    if ManualSave.SaveManager._sessionWorld then return end
+    local s = readSession()
+    if s and s.slot == info.saveName then
+        ManualSave.SaveManager._sessionWorld = s.world
+        ManualSave.SaveManager._sessionGmode = s.gmode
+    end
+end
 
 Events.OnMainMenuEnter.Add(function()
     ManualSave.SaveManager._sessionWorld = nil
@@ -79,9 +129,11 @@ Events.OnMainMenuEnter.Add(function()
 end)
 
 local function resolveWorld(info)
+    restoreSessionIfNeeded(info)
     return ManualSave.SaveManager._sessionWorld or info.saveName
 end
 local function resolveGmode(info)
+    restoreSessionIfNeeded(info)
     return ManualSave.SaveManager._sessionGmode or info.gameMode
 end
 -- Returns the actual PZ live save folder name (may differ from resolveWorld after a load).
@@ -115,6 +167,7 @@ function ManualSave.SaveManager.quickSave(slotName, onDone)
         if checkScreenshotDone() or frames >= 300 then
             Events.OnRenderTick.Remove(handler)
             clearScreenshotDone()
+            save(true)
             local meta = ManualSave.MetaCache.collectLiveData("QUICK")
             ManualSave.MetaCache.write(gmode, world, slotName, meta)
             local params = { GMODE=gmode, WORLD=world, SLOT=slotName }
@@ -170,20 +223,45 @@ end
 -- Call this from OnMainMenuEnter.
 function ManualSave.SaveManager.checkReenter()
     local p = readAndClearPending()
-    if p and p.reenter then
-        getWorld():setGameMode(p.gameMode)
-        getWorld():setWorld(p.saveName)
-        MainScreen.instance:setDefaultSandboxVars()
-        MainScreen.continueLatestSaveAux()
+    if not p or not p.reenter then return end
+    ManualSave.SaveManager._sessionWorld = p.saveName
+    ManualSave.SaveManager._sessionGmode = p.gameMode
+    if p.pendingLoad then
+        -- Second Watcher copy from clean main menu: PZ is fully stopped so it
+        -- cannot overwrite the restored backup this time.
+        ManualSave.SaveManager.load(p.gameMode, p.saveName, p.slotName, nil)
+        return
     end
+    getWorld():setGameMode(p.gameMode)
+    getWorld():setWorld(p.saveName)
+    MainScreen.instance:setDefaultSandboxVars()
+    MainScreen.continueLatestSaveAux()
 end
 
--- Loads a slot: sends LOAD signal, polls for done, then starts the game.
+--- Loads a slot: flushes PZ state, sends LOAD signal, then enters the world.
+---
+--- ### Same-world load after death
+--- After dying and creating a new character, PZ holds the new character's state in
+--- memory.  If we try to load a slot that lives in the same world folder, PZ ignores
+--- the disk state the Watcher just restored and loads from memory instead.
+---
+--- Fix: call `save(true)` BEFORE signalling the Watcher so all in-memory data is
+--- flushed to disk first.  When the Watcher then copies the backup over the live
+--- folder, there is nothing dirty left in memory.  We then call `getCore():quit()`
+--- so PZ restarts clean and reads purely from disk -- where the restored backup is.
+--- `checkReenter()` on the next OnMainMenuEnter picks up the pending file and
+--- re-enters the correct slot automatically.
+---
+--- For different-world loads (no memory conflict) we skip the quit and load directly.
+---
 ---@param gmode  string
 ---@param world  string
 ---@param slot   string
 ---@param onDone fun(status:string)?
 function ManualSave.SaveManager.load(gmode, world, slot, onDone)
+    local inGame = MainScreen.instance and not MainScreen.instance:isVisible()
+    if inGame then pcall(save, true) end   -- flush memory only when in-game
+
     ManualSave.SignalBus.send(
         "LOAD",
         { GMODE=gmode, WORLD=world, SLOT=slot },
@@ -191,6 +269,23 @@ function ManualSave.SaveManager.load(gmode, world, slot, onDone)
             if status == "OK" then
                 ManualSave.SaveManager._sessionWorld = world
                 ManualSave.SaveManager._sessionGmode = gmode
+                writeSession(slot, world, gmode)
+
+                local ok, liveWorld = pcall(function()
+                    return getWorld() and getWorld():getWorld()
+                end)
+                if inGame and ok and liveWorld == slot then
+                    -- Same world while in-game: PZ writes its state on quit and
+                    -- overwrites the backup the Watcher just copied. We quit anyway
+                    -- to get a clean PZ state; checkReenter() will call load() again
+                    -- from the main menu, triggering a second Watcher copy that PZ
+                    -- can no longer interfere with.
+                    writePendingLoad(slot, gmode, world)
+                    if onDone then pcall(onDone, status) end
+                    getCore():quit()
+                    return
+                end
+
                 getWorld():setGameMode(gmode)
                 getWorld():setWorld(slot)
                 MainScreen.instance:setDefaultSandboxVars()
