@@ -2,7 +2,7 @@
 -- Fixed full-screen docked panel (like PZ's own settings screens).
 -- No title bar, no drag, no X button. Closed via Back button or ESC.
 -- The dark full-screen backdrop is internal — callers work with obj.panel (inner).
----@diagnostic disable: undefined-global
+---@diagnostic disable: undefined-global, undefined-doc-name
 
 ManualSave = ManualSave or {}
 

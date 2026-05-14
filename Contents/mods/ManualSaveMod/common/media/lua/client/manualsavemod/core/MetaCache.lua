@@ -89,7 +89,8 @@ function ManualSave.MetaCache.write(gmode, world, slot, data)
     w:write("WORLD=" .. world                .. "\r\n")
     w:write("SLOT="  .. slot                 .. "\r\n")
     w:write("MAP="   .. (d.MAP   or "")      .. "\r\n")
-    w:write("MODS="  .. (d.MODS  or "")      .. "\r\n")
+    w:write("MODS="    .. (d.MODS    or "") .. "\r\n")
+    w:write("MOD_IDS=" .. (d.MOD_IDS or "") .. "\r\n")
     if d.DAY      then w:write("DAY="      .. d.DAY      .. "\r\n") end
     if d.PLAYTIME then w:write("PLAYTIME=" .. d.PLAYTIME .. "\r\n") end
     if d.SEED     then w:write("SEED="     .. d.SEED     .. "\r\n") end
@@ -106,13 +107,18 @@ end
 ---@param oldSlot   string
 ---@param newSlot   string
 ---@param freshDate boolean?
-function ManualSave.MetaCache.copy(gmode, world, oldSlot, newSlot, freshDate, dateOverride)
+-- modsData: nil = keep original, or table { MODS="...", MOD_IDS="..." } to override.
+function ManualSave.MetaCache.copy(gmode, world, oldSlot, newSlot, freshDate, dateOverride, modsData)
     local meta = ManualSave.MetaCache.read(gmode, world, oldSlot)
     if not meta then
         print("[ManualSaveMod] MetaCache.copy: no meta for " .. oldSlot)
         return false
     end
     if freshDate then meta.DATE = dateOverride or os.date("%d %b %Y %H:%M") end
+    if modsData then
+        if modsData.MODS    ~= nil then meta.MODS    = modsData.MODS    end
+        if modsData.MOD_IDS ~= nil then meta.MOD_IDS = modsData.MOD_IDS end
+    end
     meta.SLOT = newSlot
     return ManualSave.MetaCache.write(gmode, world, newSlot, meta)
 end
@@ -143,13 +149,15 @@ function ManualSave.MetaCache.collectLiveData(saveType)
         local info = getSaveInfo(getWorld():getWorld())
         if info and info.mapName then d.MAP = info.mapName end
         if info and info.activeMods then
-            local list = {}
+            local nameList, idList = {}, {}
             for i = 1, info.activeMods:getMods():size() do
                 local id = info.activeMods:getMods():get(i - 1)
                 local mi = getModInfoByID(id)
-                table.insert(list, mi and mi:getName() or id)
+                table.insert(nameList, mi and mi:getName() or id)
+                table.insert(idList, id)
             end
-            d.MODS = table.concat(list, ", ")
+            d.MODS    = table.concat(nameList, ", ")
+            d.MOD_IDS = table.concat(idList,   ", ")
         end
     end)
 
@@ -205,37 +213,47 @@ function ManualSave.MetaCache.tryEnrichNative(gmode, world, slot)
             changed = true
         end
         if info.activeMods and (not meta.MODS or meta.MODS == "") then
-            local list = {}
+            local nameList, idList = {}, {}
             for i = 1, info.activeMods:getMods():size() do
                 local id = info.activeMods:getMods():get(i - 1)
                 local mi = getModInfoByID(id)
-                table.insert(list, mi and mi:getName() or id)
+                table.insert(nameList, mi and mi:getName() or id)
+                table.insert(idList, id)
             end
-            if #list > 0 then meta.MODS = table.concat(list, ", "); changed = true end
+            if #nameList > 0 then
+                meta.MODS    = table.concat(nameList, ", ")
+                meta.MOD_IDS = table.concat(idList,   ", ")
+                changed = true
+            end
         end
     end)
 
-    -- Resolve MODS IDs to display names (works even without getSaveInfo)
-    if meta.MODS and meta.MODS ~= "" then
-        local ids = {}
+    -- Resolve MODS (raw IDs -> display names); populate MOD_IDS if not yet set.
+    -- Only runs when MODS has content and MOD_IDS is missing (native imports, old saves).
+    if meta.MODS and meta.MODS ~= "" and (not meta.MOD_IDS or meta.MOD_IDS == "") then
+        local rawIds = {}
         for id in meta.MODS:gmatch("[^,]+") do
             local s = id:match("^%s*(.-)%s*$")
-            if s ~= "" then table.insert(ids, s) end
+            if s ~= "" then table.insert(rawIds, s) end
         end
-        local resolved, anyImproved = {}, false
-        for _, id in ipairs(ids) do
+        local names, anyImproved = {}, false
+        for _, id in ipairs(rawIds) do
             local ok, mi = pcall(getModInfoByID, id)
             local name = (ok and mi and mi:getName()) or id
             if name ~= id then anyImproved = true end
-            table.insert(resolved, name)
+            table.insert(names, name)
         end
         if anyImproved then
-            meta.MODS = table.concat(resolved, ", ")
+            meta.MOD_IDS = table.concat(rawIds, ", ")
+            meta.MODS    = table.concat(names,  ", ")
             changed = true
         end
     end
 
     if changed then ManualSave.MetaCache.write(gmode, world, slot, meta) end
 end
+
+ManualSave.MOD_VERSION = "?"
+ManualSave.MOD_NAME    = "Manual Save & Slot Manager"
 
 print("[ManualSaveMod] Core/MetaCache.lua loaded.")

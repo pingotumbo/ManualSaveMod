@@ -24,6 +24,8 @@ $HB            = 0
 
 if (-not (Test-Path $LuaDir)) { New-Item -ItemType Directory -Path $LuaDir -Force | Out-Null }
 
+Write-Host "[ManualSave_Watcher] Loading (compiling native libs)..."
+
 # ── Win32 / GDI setup (compiled before lock so MSM_Win is available in the catch block) ──
 
 Add-Type -AssemblyName System.Drawing
@@ -66,17 +68,14 @@ try {
     $existingPid = $null
     try { $existingPid = [int](Get-Content $LOCK_FILE -Raw -EA Stop) } catch {}
     if ($existingPid -and (Get-Process -Id $existingPid -EA SilentlyContinue)) {
-        try {
-            (New-Object -ComObject WScript.Shell).AppActivate($existingPid) | Out-Null
-            Write-Host "[ManualSave_Watcher] Already running (PID $existingPid) - window raised."
-        } catch {
-            Write-Host "[ManualSave_Watcher] Another instance is already running (PID $existingPid)"
-        }
+        Write-Host "[ManualSave_Watcher] Already running (PID $existingPid) - raising window..."
+        try { (New-Object -ComObject WScript.Shell).AppActivate($existingPid) | Out-Null } catch {}
     } else {
-        Write-Host "[ManualSave_Watcher] Another instance is already running"
+        Write-Host "[ManualSave_Watcher] Lock conflict (stale file). Delete manually if this repeats:"
+        Write-Host "  $LOCK_FILE"
     }
-    Start-Sleep -Seconds 2
-    exit 1
+    Start-Sleep -Seconds 3
+    exit 0
 }
 
 $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
@@ -95,10 +94,10 @@ if (-not (Test-Path $INDEX))   { "" | Set-Content $INDEX }
 # Migrate old MSM_THUMB_* folders
 foreach ($T in (Get-ChildItem "$SAVES\MSM_THUMB_*" -Directory -EA SilentlyContinue)) {
     $msn = $T.Name -replace '^MSM_THUMB_', ''
-    if ((Test-Path "$($T.FullName)\thumb.png") -and (-not (Test-Path "$THUMBS\$msn.png"))) {
-        Copy-Item "$($T.FullName)\thumb.png" "$THUMBS\$msn.png" -Force
+    if ((Test-Path -LiteralPath "$($T.FullName)\thumb.png") -and (-not (Test-Path -LiteralPath "$THUMBS\$msn.png"))) {
+        Copy-Item -LiteralPath "$($T.FullName)\thumb.png" -Destination "$THUMBS\$msn.png" -Force
     }
-    Remove-Item $T.FullName -Recurse -Force
+    Remove-Item -LiteralPath $T.FullName -Recurse -Force
 }
 
 Write-Host "[ManualSave_Watcher] Watching for signals... (press Ctrl+C to stop)"
@@ -287,7 +286,7 @@ while ($true) {
             $liveWorld = if ($p['LIVE_WORLD']) { $p['LIVE_WORLD'] } else { $WORLD }
             $src = "$SAVES\$GMODE\$liveWorld"
             $dst = "$BACKUPS\$GMODE\$WORLD\$SLOT"
-            if (-not (Test-Path $src)) { Write-Host "[ManualSave_Watcher] ERROR: save folder not found: $src"; break }
+            if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] ERROR: save folder not found: $src"; break }
             if ($SLOT -notmatch 'QUICK_SAVE') {
                 Write-Host "[ManualSave_Watcher] Full Save: waiting 1 sec for PZ flush..."
                 Start-Sleep -Seconds 1
@@ -297,16 +296,16 @@ while ($true) {
             if ($LASTEXITCODE -ge 16) { Write-Host "[ManualSave_Watcher] ERROR: robocopy fatal, code $LASTEXITCODE"; break }
             Write-Host "[ManualSave_Watcher] SAVE complete: $dst"
             Add-ToIndex $GMODE $WORLD $SLOT
-            if (-not (Test-Path $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
-            if (Test-Path $THUMB_PENDING) {
+            if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
+            if (Test-Path -LiteralPath $THUMB_PENDING) {
                 Write-Host "[ManualSave_Watcher] Using captured thumbnail."
-                Copy-Item $THUMB_PENDING "$dst\thumb.png" -Force
-                Copy-Item $THUMB_PENDING "$THUMBS\$SLOT.png" -Force
-                Remove-Item $THUMB_PENDING -Force
+                Copy-Item -LiteralPath $THUMB_PENDING -Destination "$dst\thumb.png" -Force
+                Copy-Item -LiteralPath $THUMB_PENDING -Destination "$THUMBS\$SLOT.png" -Force
+                Remove-Item -LiteralPath $THUMB_PENDING -Force
             } else {
                 Write-Host "[ManualSave_Watcher] No thumbnail, generating placeholder..."
                 New-Placeholder "$dst\thumb.png"
-                Copy-Item "$dst\thumb.png" "$THUMBS\$SLOT.png" -Force
+                Copy-Item -LiteralPath "$dst\thumb.png" -Destination "$THUMBS\$SLOT.png" -Force
             }
             $size  = Get-FolderSizeMB $dst
             $safeG = $GMODE -replace ' ', '_'
@@ -314,9 +313,9 @@ while ($true) {
             $safeS = $SLOT  -replace ' ', '_'
             $meta  = "$LuaDir\ManualSaves_Meta_${safeG}_${safeW}_${safeS}.txt"
             $date  = Get-Date -Format 'dd MMM yyyy HH:mm'
-            if (Test-Path $meta) {
-                Add-Content $meta "SIZE=$size MB"
-                Add-Content $meta "DATE=$date"
+            if (Test-Path -LiteralPath $meta) {
+                Add-Content -LiteralPath $meta "SIZE=$size MB"
+                Add-Content -LiteralPath $meta "DATE=$date"
                 Write-Host "[ManualSave_Watcher] SIZE=$size MB, DATE=$date written."
             }
             Write-Done "OK" "SAVE" @{ SLOT = $SLOT }
@@ -324,29 +323,34 @@ while ($true) {
         'LOAD' {
             $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             $dst = "$SAVES\$GMODE\$SLOT"
-            if (-not (Test-Path $src)) { Write-Host "[ManualSave_Watcher] ERROR: backup not found: $src"; break }
+            if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] ERROR: backup not found: $src"; break }
             & robocopy $src $dst /MIR /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
             if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] ERROR: robocopy failed, code $LASTEXITCODE"; break }
             Write-Host "[ManualSave_Watcher] RESTORE complete: $dst"
             $safeSlot  = $SLOT -replace '[\\/ ]', '_'
             $flagsFile = "$LuaDir\ManualSaves_Flags_$safeSlot.txt"
-            if (Test-Path $flagsFile) {
+            if (Test-Path -LiteralPath $flagsFile) {
                 Write-Host "[ManualSave_Watcher] Found flags file!"
-                $flags = (Get-Content $flagsFile -EA SilentlyContinue | Where-Object { $_ -match '^FLAGS=' }) -replace '^FLAGS=', ''
+                $flags = (Get-Content -LiteralPath $flagsFile -EA SilentlyContinue | Where-Object { $_ -match '^FLAGS=' }) -replace '^FLAGS=', ''
                 if ($flags -match 'WIPE_ZOMBIES') {
-                    Write-Host "[ManualSave_Watcher] Wiping zombies..."
-                    Get-ChildItem "$dst\map_*.bin" -EA SilentlyContinue |
-                        Where-Object { $_.Name -notin @('map_t.bin','map_sand.bin') } |
-                        Remove-Item -Force
+                    Write-Host "[ManualSave_Watcher] Wiping zombies (zpop files)..."
+                    Get-ChildItem -LiteralPath "$dst\zpop" -Filter "zpop_*.bin" -EA SilentlyContinue | Remove-Item -Force
+                    Write-Host "[ManualSave_Watcher] Zombie wipe complete."
                 }
-                Remove-Item $flagsFile -Force
+                # Write remaining flags for Lua to apply after game loads
+                $postFlags = ($flags -split ',' | Where-Object { $_ -notmatch '^WIPE_ZOMBIES$' }) -join ','
+                if ($postFlags) {
+                    "FLAGS=$postFlags" | Set-Content -LiteralPath "$LuaDir\ManualSaves_PostLoad.txt"
+                    Write-Host "[ManualSave_Watcher] Post-load flags written: $postFlags"
+                }
+                Remove-Item -LiteralPath $flagsFile -Force
             }
             Write-Done "OK" "LOAD" @{ SLOT = $SLOT }
         }
         'DELETE' {
             $target = "$BACKUPS\$GMODE\$WORLD\$SLOT"
-            if (Test-Path $target) { Remove-Item $target -Recurse -Force }
-            if (Test-Path "$THUMBS\$SLOT.png") { Remove-Item "$THUMBS\$SLOT.png" -Force }
+            if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+            if (Test-Path -LiteralPath "$THUMBS\$SLOT.png") { Remove-Item -LiteralPath "$THUMBS\$SLOT.png" -Force }
             Rebuild-Index
             Write-Done "OK" "DELETE"
         }
@@ -354,12 +358,12 @@ while ($true) {
             if (-not $OLD_SLOT -and $SLOT -match '^(.+)\|(.+)$') { $OLD_SLOT = $Matches[1]; $NEW_SLOT = $Matches[2] }
             $src = "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT"
             $dst = "$BACKUPS\$GMODE\$WORLD\$NEW_SLOT"
-            if (-not (Test-Path $src)) {
+            if (-not (Test-Path -LiteralPath $src)) {
                 Write-Host "[ManualSave_Watcher] RENAME ERROR: source not found: $src"
                 Write-Done "ERROR" "RENAME" @{ ERROR = "source_not_found" }; break
             }
-            Move-Item $src $dst -Force
-            if (Test-Path "$THUMBS\$OLD_SLOT.png") { Move-Item "$THUMBS\$OLD_SLOT.png" "$THUMBS\$NEW_SLOT.png" -Force }
+            Move-Item -LiteralPath $src -Destination $dst -Force
+            if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Move-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
             Rebuild-Index
             Write-Done "OK" "RENAME" @{ SLOT = $NEW_SLOT }
         }
@@ -367,12 +371,12 @@ while ($true) {
             if (-not $OLD_SLOT -and $SLOT -match '^(.+)\|(.+)$') { $OLD_SLOT = $Matches[1]; $NEW_SLOT = $Matches[2] }
             $src = "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT"
             $dst = "$BACKUPS\$GMODE\$WORLD\$NEW_SLOT"
-            if (Test-Path $src) { & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null }
+            if (Test-Path -LiteralPath $src) { & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null }
             Rebuild-Index
-            if (Test-Path "$THUMBS\$OLD_SLOT.png") { Copy-Item "$THUMBS\$OLD_SLOT.png" "$THUMBS\$NEW_SLOT.png" -Force }
-            elseif (Test-Path "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
-                if (-not (Test-Path $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
-                Copy-Item "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png" "$THUMBS\$NEW_SLOT.png" -Force
+            if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Copy-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
+            elseif (Test-Path -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
+                if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
+                Copy-Item -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force
             }
             Write-Done "OK" "CLONE" @{ SLOT = $NEW_SLOT; DATE = (Get-Date -Format 'dd MMM yyyy HH:mm') }
         }
@@ -380,83 +384,82 @@ while ($true) {
             if (-not $OLD_WORLD) { $OLD_WORLD = $WORLD }
             if (-not $NEW_WORLD -and $SLOT -match '\|(.+)$') { $NEW_WORLD = $Matches[1] }
             $src = "$BACKUPS\$GMODE\$OLD_WORLD"
-            if (Test-Path $src) { Rename-Item $src $NEW_WORLD }
+            if (Test-Path -LiteralPath $src) { Rename-Item -LiteralPath $src $NEW_WORLD }
             Rebuild-Index
             Write-Done "OK" "RENAME_WORLD"
         }
-        'STRIP_MODS' {
-            $target = "$BACKUPS\$GMODE\$WORLD\$SLOT"
-            if (Test-Path $target) { "" | Set-Content "$target\mods.txt"; Write-Host "[ManualSave_Watcher] mods.txt cleared." }
-            Write-Done "OK" "STRIP_MODS" @{ SLOT = $SLOT }
-        }
-        'CLONE_STRIP' {
+        'CLONE_MODS' {
             if (-not $OLD_SLOT -and $SLOT -match '^(.+)\|(.+)$') { $OLD_SLOT = $Matches[1]; $NEW_SLOT = $Matches[2] }
+            $MOD_LIST = $p['MODS']
             $src = "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT"
             $dst = "$BACKUPS\$GMODE\$WORLD\$NEW_SLOT"
-            if (-not (Test-Path $src)) { Write-Host "[ManualSave_Watcher] CLONE_STRIP: source not found: $src"; break }
+            if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] CLONE_MODS: source not found: $src"; break }
             & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] CLONE_STRIP: robocopy failed, code $LASTEXITCODE"; break }
-            "" | Set-Content "$dst\mods.txt"
-            Write-Host "[ManualSave_Watcher] CLONE_STRIP: mods.txt cleared."
+            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] CLONE_MODS: robocopy failed, code $LASTEXITCODE"; break }
+            $modLines = ($MOD_LIST -split ',') | ForEach-Object { "mod=$($_.Trim())" } | Where-Object { $_ -ne "mod=" }
+            $modLines | Set-Content -LiteralPath "$dst\mods.txt"
+            Write-Host "[ManualSave_Watcher] CLONE_MODS: mods.txt written with $(($modLines | Measure-Object).Count) mods."
             Rebuild-Index
-            if (Test-Path "$THUMBS\$OLD_SLOT.png") { Copy-Item "$THUMBS\$OLD_SLOT.png" "$THUMBS\$NEW_SLOT.png" -Force }
-            elseif (Test-Path "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
-                if (-not (Test-Path $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
-                Copy-Item "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png" "$THUMBS\$NEW_SLOT.png" -Force
+            if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Copy-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
+            elseif (Test-Path -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
+                if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
+                Copy-Item -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force
             }
-            Write-Done "OK" "CLONE_STRIP" @{ SLOT = $NEW_SLOT }
+            Write-Done "OK" "CLONE_MODS" @{ SLOT = $NEW_SLOT }
         }
         'SCAN_VANILLA' {
             $scanResult = "$LuaDir\ManualSave_VanillaScan.txt"
-            "" | Set-Content $scanResult
-            if (Test-Path $SAVES) {
-                foreach ($G in (Get-ChildItem $SAVES -Directory -EA SilentlyContinue | Where-Object { $_.Name -notmatch '^MSM_' })) {
-                    foreach ($W in (Get-ChildItem $G.FullName -Directory -EA SilentlyContinue)) {
-                        $imported = if (Test-Path "$BACKUPS\$($G.Name)\$($W.Name)\$($W.Name)") { "1" } else { "0" }
+            "" | Set-Content -LiteralPath $scanResult
+            if (Test-Path -LiteralPath $SAVES) {
+                foreach ($G in (Get-ChildItem -LiteralPath $SAVES -Directory -EA SilentlyContinue | Where-Object { $_.Name -notmatch '^MSM_' })) {
+                    foreach ($W in (Get-ChildItem -LiteralPath $G.FullName -Directory -EA SilentlyContinue)) {
+                        $imported = if (Test-Path -LiteralPath "$BACKUPS\$($G.Name)\$($W.Name)\$($W.Name)") { "1" } else { "0" }
                         $fdate = $W.LastWriteTime.ToString('MM/dd/yyyy HH:mm')
-                        Add-Content $scanResult "$($G.Name)|$($W.Name)|$fdate|$imported"
+                        $bytes = (Get-ChildItem -LiteralPath $W.FullName -Recurse -File -EA SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                        $sizeMB = if ($bytes -gt 0) { [math]::Round($bytes / 1MB, 0) } else { 0 }
+                        Add-Content -LiteralPath $scanResult "$($G.Name)|$($W.Name)|$fdate|$imported|$sizeMB"
                     }
                 }
             }
-            Add-Content $scanResult "##SCAN_DONE##"
+            Add-Content -LiteralPath $scanResult "##SCAN_DONE##"
             Write-Done "OK" "SCAN_VANILLA"
             Write-Host "[ManualSave_Watcher] SCAN_VANILLA complete."
         }
         'IMPORT' {
             $importQueue = "$LuaDir\ManualSave_ImportQueue.txt"
-            if (-not (Test-Path $importQueue)) {
+            if (-not (Test-Path -LiteralPath $importQueue)) {
                 Write-Host "[ManualSave_Watcher] IMPORT: queue file not found."
                 Write-Done "ERROR" "IMPORT"; break
             }
             $importDate = Get-Date -Format 'dd MMM yyyy HH:mm'
-            foreach ($line in (Get-Content $importQueue -EA SilentlyContinue)) {
+            foreach ($line in (Get-Content -LiteralPath $importQueue -EA SilentlyContinue)) {
                 $parts = ($line.TrimEnd("`r","`n")) -split '\|', 2
                 if ($parts.Count -lt 2) { continue }
                 $ig = $parts[0].Trim(); $iw = $parts[1].Trim()
                 if (-not $ig -or -not $iw) { continue }
                 $src = "$SAVES\$ig\$iw"; $dst = "$BACKUPS\$ig\$iw\$iw"
-                if (Test-Path $src) {
+                if (Test-Path -LiteralPath $src) {
                     Write-Host "[ManualSave_Watcher] IMPORT: '$iw' (gmode=$ig) -> $dst"
                     & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null
                     $mg = $ig -replace ' ','_'; $mw = $iw -replace ' ','_'
                     $meta = "$LuaDir\ManualSaves_Meta_${mg}_${mw}_${mw}.txt"
                     $modsStr = ""
-                    if (Test-Path "$src\mods.txt") {
-                        $modsStr = (Get-Content "$src\mods.txt" -EA SilentlyContinue | Where-Object { $_.Trim() }) -join ', '
+                    if (Test-Path -LiteralPath "$src\mods.txt") {
+                        $modsStr = (Get-Content -LiteralPath "$src\mods.txt" -EA SilentlyContinue | Where-Object { $_.Trim() }) -join ', '
                     }
                     $sz = Get-FolderSizeMB $dst
-                    @("DATE=$importDate","TYPE=NATIVE","GMODE=$ig","WORLD=$iw","SLOT=$iw","MAP=","MODS=$modsStr","SIZE=$sz MB","SOURCE=NATIVE") | Set-Content $meta
+                    @("DATE=$importDate","TYPE=NATIVE","GMODE=$ig","WORLD=$iw","SLOT=$iw","MAP=","MODS=$modsStr","SIZE=$sz MB","SOURCE=NATIVE") | Set-Content -LiteralPath $meta
                     Write-Host "[ManualSave_Watcher] IMPORT: meta written for '$iw' (size=$sz MB)."
-                    if (Test-Path "$dst\thumb.png") {
-                        if (-not (Test-Path $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
-                        Copy-Item "$dst\thumb.png" "$THUMBS\$iw.png" -Force
+                    if (Test-Path -LiteralPath "$dst\thumb.png") {
+                        if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
+                        Copy-Item -LiteralPath "$dst\thumb.png" -Destination "$THUMBS\$iw.png" -Force
                         Write-Host "[ManualSave_Watcher] IMPORT: thumbnail copied for '$iw'."
                     }
                 } else {
                     Write-Host "[ManualSave_Watcher] IMPORT: source not found: $src"
                 }
             }
-            Remove-Item $importQueue -Force
+            Remove-Item -LiteralPath $importQueue -Force
             Rebuild-Index
             Write-Done "OK" "IMPORT"
             Write-Host "[ManualSave_Watcher] IMPORT complete."

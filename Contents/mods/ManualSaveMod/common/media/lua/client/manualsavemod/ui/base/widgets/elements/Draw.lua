@@ -1,7 +1,7 @@
 -- UI/Base/Elements/Draw.lua
 -- Visual helper functions called inside panel prerender callbacks.
 -- These are NOT widgets — they draw directly into the panel passed as first argument.
----@diagnostic disable: undefined-global
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
 
 ManualSave       = ManualSave or {}
 ManualSave.Draw  = ManualSave.Draw or {}
@@ -17,7 +17,7 @@ local T = function() return ManualSave.Theme end
 ---@param x      number
 ---@param y      number
 ---@param text   string
----@param style  "accent"|"native"|"danger"|"ok"|"dim"|{r:number,g:number,b:number}
+---@param style  "accent"|"native"|"danger"|"ok"|"dim"|"warn"|{r:number,g:number,b:number}
 function ManualSave.Draw.badge(panel, x, y, text, style)
     local TH = T()
     local r, g, b
@@ -29,6 +29,8 @@ function ManualSave.Draw.badge(panel, x, y, text, style)
         r, g, b = TH.DANGER_R, TH.DANGER_G, TH.DANGER_B
     elseif style == "ok" then
         r, g, b = 0.30, 0.72, 0.36
+    elseif style == "warn" then
+        r, g, b = TH.WARN_R, TH.WARN_G, TH.WARN_B
     elseif style == "dim" then
         r, g, b = TH.DIM_R, TH.DIM_G, TH.DIM_B
     else -- "accent" and default
@@ -238,6 +240,52 @@ function ManualSave.Draw.expandIcon(panel, x, y, size, alpha, r, g, b)
     -- bottom-right
     panel:drawRect(x + size - a,  y + size - 1,  a,     1,     alpha, r, g, b)
     panel:drawRect(x + size - 1,  y + size - a,  1,     a - 1, alpha, r, g, b)
+end
+
+-- ── Checkbox ──────────────────────────────────────────────────────────────────
+
+-- Draws a square checkbox: border in LINE colour, filled with ACCENT when checked.
+---@param panel   ISPanel
+---@param x       number
+---@param y       number
+---@param sz      number   side length in pixels
+---@param checked boolean
+function ManualSave.Draw.checkbox(panel, x, y, sz, checked)
+    local TH = T()
+    panel:drawRectBorder(x, y, sz, sz, 0.45, TH.LINE_R, TH.LINE_G, TH.LINE_B)
+    if checked then
+        panel:drawRect(x + 2, y + 2, sz - 4, sz - 4, 1, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
+    end
+end
+
+-- ── Icon badge ────────────────────────────────────────────────────────────────
+
+-- Draws a mod icon texture if available, otherwise a coloured letter badge.
+-- cr/cg/cb/ca are the row text colour (used for the letter badge tint and alpha).
+---@param panel  ISPanel
+---@param x      number
+---@param y      number
+---@param sz     number    square size in pixels
+---@param letter string    single uppercase letter for the fallback badge
+---@param icon   any?      texture returned by getTexture(), or nil
+---@param cr     number
+---@param cg     number
+---@param cb     number
+---@param ca     number
+function ManualSave.Draw.iconBadge(panel, x, y, sz, letter, icon, cr, cg, cb, ca)
+    if icon then
+        panel:drawTextureScaled(icon, x, y, sz, sz, ca)
+    else
+        local tm = getTextManager()
+        local fh = tm:getFontHeight(UIFont.Small)
+        local lw = tm:MeasureStringX(UIFont.Small, letter)
+        panel:drawRect(x, y, sz, sz, 0.15 * ca, cr, cg, cb)
+        panel:drawRectBorder(x, y, sz, sz, 0.5 * ca, cr, cg, cb)
+        panel:drawText(letter,
+            x + math.floor((sz - lw) / 2),
+            y + math.floor((sz - fh) / 2),
+            cr, cg, cb, 0.9 * ca, UIFont.Small)
+    end
 end
 
 print("[ManualSaveMod] UI/Base/Widgets/Elements/Draw.lua loaded.")

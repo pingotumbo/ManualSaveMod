@@ -4,6 +4,8 @@
 
 ManualSave = ManualSave or {}
 
+local PLATFORM = "Windows 10 / 11"
+
 local _screen      = nil
 local _section     = "start"
 local _navScrollTo = nil
@@ -22,7 +24,20 @@ local NAV_W = 200
 -- GETTING STARTED ──────────────────────────────────────────────────────────────
 
 local function modTitle()
-    return "Manual Save & Slot Manager [B42]  v1.1.1"
+    if ManualSave.MOD_VERSION == "?" then
+        pcall(function()
+            local r = getModFileReader("ManualSaveMod", "mod.info", false)
+            if not r then return end
+            while true do
+                local line = r:readLine()
+                if not line then break end
+                local v = line:match("^modversion=(.-)%s*$")
+                if v and v ~= "" then ManualSave.MOD_VERSION = v; break end
+            end
+            r:close()
+        end)
+    end
+    return ManualSave.MOD_NAME .. "  v" .. ManualSave.MOD_VERSION
 end
 
 local function start_lines()
@@ -33,7 +48,7 @@ local function start_lines()
         { getText("UI_MSM_Help_Start_03"),  "body"      },
         { "",                                           },
         { getText("UI_MSM_Help_Start_04"),  "header"    },
-        { getText("UI_MSM_Help_Start_05"),  "sub"       },
+        { PLATFORM,                         "sub"       },
         { getText("UI_MSM_Help_Start_06"),  "body"      },
         { "",                                           },
         { getText("UI_MSM_Help_Start_07"),  "sub"       },
@@ -380,20 +395,26 @@ local function renameworld_lines()
     }
 end
 
-local function stripmods_lines()
+local function editmods_lines()
     return {
-        { getText("UI_MSM_Help_Stripmods_01"), "header"    },
-        { getText("UI_MSM_Help_Stripmods_02"), "body"      },
-        { "",                                              },
-        { getText("UI_MSM_Help_Stripmods_03"), "header"    },
-        { getText("UI_MSM_Help_Stripmods_04"), "body"      },
-        { "",                                              },
-        { getText("UI_MSM_Help_Stripmods_05"), "header"    },
-        { getText("UI_MSM_Help_Stripmods_06"), "callout_w" },
-        { "",                                              },
-        { getText("UI_MSM_Help_Stripmods_07"), "header"    },
-        { getText("UI_MSM_Help_Stripmods_08"), "body"      },
-        { getText("UI_MSM_Help_Stripmods_09"), "dim"       },
+        { getText("UI_MSM_Help_EditMods_01"), "header"    },
+        { getText("UI_MSM_Help_EditMods_02"), "body"      },
+        { "",                                             },
+        { getText("UI_MSM_Help_EditMods_03"), "callout"   },
+        { "",                                             },
+        { getText("UI_MSM_Help_EditMods_11"), "header"    },
+        { getText("UI_MSM_Help_EditMods_12"), "body"      },
+        { "",                                             },
+        { getText("UI_MSM_Help_EditMods_13"), "header"    },
+        { getText("UI_MSM_Help_EditMods_14"), "check"     },
+        { getText("UI_MSM_Help_EditMods_15"), "check"     },
+        { getText("UI_MSM_Help_EditMods_16"), "check"     },
+        { "",                                             },
+        { getText("UI_MSM_Help_EditMods_17"), "header"    },
+        { getText("UI_MSM_Help_EditMods_18"), "body"      },
+        { getText("UI_MSM_Help_EditMods_19"), "dim"       },
+        { "",                                             },
+        { getText("UI_MSM_Help_EditMods_20"), "callout_w" },
     }
 end
 
@@ -411,10 +432,6 @@ local function recovery_lines()
         { getText("UI_MSM_Help_Recovery_06"), "body"       },
         { getText("UI_MSM_Help_Recovery_07"), "dim"        },
         { getText("UI_MSM_Help_Recovery_08"), "warn"       },
-        { "",                                              },
-        { getText("UI_MSM_Help_Recovery_09"), "sub"        },
-        { getText("UI_MSM_Help_Recovery_10"), "body"       },
-        { getText("UI_MSM_Help_Recovery_11"), "dim"        },
         { "",                                              },
         { getText("UI_MSM_Help_Recovery_12"), "sub"        },
         { getText("UI_MSM_Help_Recovery_13"), "body"       },
@@ -472,7 +489,8 @@ end
 local function limits_lines()
     return {
         { getText("UI_MSM_Help_Limits_01"), "header"       },
-        { getText("UI_MSM_Help_Limits_02"), "body"         },
+        { PLATFORM,                         "sub"          },
+        { getText("UI_MSM_Help_Limits_02"), "dim"          },
         { "",                                              },
         { getText("UI_MSM_Help_Limits_03"), "header"       },
         { getText("UI_MSM_Help_Limits_04"), "body"         },
@@ -608,7 +626,7 @@ local CATEGORIES = {
     }},
     { id="worldops", label=getText("UI_MSM_Help_CatWorldops"), pages={
         { id="renameworld", label=getText("UI_MSM_Help_PageRenameworld"),lines=renameworld_lines },
-        { id="stripmods",   label=getText("UI_MSM_Help_PageStripmods"),  lines=stripmods_lines   },
+        { id="editmods",    label=getText("UI_MSM_Help_PageEditMods"),   lines=editmods_lines    },
     }},
     { id="recovery", label=getText("UI_MSM_Help_CatRecovery"), pages={
         { id="recovery",    label=getText("UI_MSM_Help_PageRecovery"),   lines=recovery_lines    },

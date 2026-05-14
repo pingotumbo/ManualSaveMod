@@ -2,7 +2,7 @@
 -- Virtualised scroll list. Renders only visible rows via a caller-supplied
 -- drawRow function. Handles mouse wheel, drag scrollbar, and click selection.
 -- Adds itself to parent automatically.
----@diagnostic disable: undefined-global, undefined-doc-name
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
 
 ManualSave = ManualSave or {}
 
@@ -22,7 +22,7 @@ ManualSave = ManualSave or {}
 --
 ---@param parent ISPanel
 ---@param opts { x:number, y:number, w:number, h:number, rowH:number, items:table, drawRow:fun(panel:ISPanel,item:any,x:number,y:number,w:number,h:number,selected:boolean,idx:number), onSelect:fun(item:any,idx:number)?, onActivate:fun(item:any,idx:number)?, bg:{r:number,g:number,b:number}? }
----@return { panel:ISPanel, setItems:fun(t:table), getSelected:fun():any, setSelected:fun(idx:number), clearSelection:fun(), scrollToIndex:fun(idx:number) }
+---@return { panel:ISPanel, setItems:fun(t:table, keepScroll:boolean?), getSelected:fun():any, setSelected:fun(idx:number), clearSelection:fun(), scrollToIndex:fun(idx:number) }
 function ManualSave.makeScrollList(parent, opts)
     local TH     = ManualSave.Theme
     local SCROLL = 12   -- scrollbar width
@@ -167,9 +167,10 @@ function ManualSave.makeScrollList(parent, opts)
     local obj = { panel = p }
 
     ---@param t table
-    function obj.setItems(t)
+    ---@param keepScroll boolean? preserve current scroll position (default false)
+    function obj.setItems(t, keepScroll)
         items = t
-        scrollY = 0
+        if keepScroll then clampScroll() else scrollY = 0 end
         selected = 0
     end
 
