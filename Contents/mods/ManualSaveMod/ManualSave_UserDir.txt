@@ -1,0 +1,2 @@
+﻿# Edit this path if your Zomboid folder is on a different drive.
+%USERPROFILE%\Zomboid

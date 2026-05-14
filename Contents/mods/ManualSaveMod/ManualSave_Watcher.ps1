@@ -7,13 +7,57 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-$LuaDir        = "$env:USERPROFILE\Zomboid\Lua"
+$_userDirConfig = Join-Path $PSScriptRoot "ManualSave_UserDir.txt"
+
+function Read-ZomboidPath {
+    param([string]$current)
+    while ($true) {
+        if ($current) {
+            Write-Host "[ManualSave_Watcher] Current path: $current"
+            $typed = (Read-Host "New path (Enter to keep current)").Trim()
+            if ($typed -eq '') { return $current }
+        } else {
+            Write-Host "[ManualSave_Watcher] Zomboid folder not found at: $env:USERPROFILE\Zomboid"
+            $typed = (Read-Host "Enter Zomboid folder path").Trim()
+            if ($typed -eq '') { continue }
+        }
+        $expanded = [System.Environment]::ExpandEnvironmentVariables($typed)
+        if (Test-Path $expanded) {
+            @("# Edit this path if your Zomboid folder is on a different drive.", $expanded) |
+                Set-Content $_userDirConfig -Encoding UTF8
+            Write-Host "[ManualSave_Watcher] Path saved."
+            return $expanded
+        }
+        Write-Host "[ManualSave_Watcher] Path not found: $expanded"
+    }
+}
+
+$_configLine = Get-Content $_userDirConfig -EA SilentlyContinue |
+    Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() -ne '' } |
+    Select-Object -First 1
+$_saved = if ($_configLine) { [System.Environment]::ExpandEnvironmentVariables($_configLine.Trim()) } else { '' }
+
+if ($args[0] -eq 'path') {
+    $ZomboidRoot = Read-ZomboidPath -current $_saved
+    $_userDirSource = "config"
+} elseif ($_saved -and (Test-Path $_saved)) {
+    $ZomboidRoot = $_saved
+    $_userDirSource = "config"
+} elseif (Test-Path "$env:USERPROFILE\Zomboid") {
+    $ZomboidRoot = "$env:USERPROFILE\Zomboid"
+    $_userDirSource = "default"
+} else {
+    $ZomboidRoot = Read-ZomboidPath
+    $_userDirSource = "config"
+}
+
+$LuaDir        = "$ZomboidRoot\Lua"
 $SIGNAL        = "$LuaDir\ManualSave_Signal.txt"
 $INDEX         = "$LuaDir\ManualSave_Index.txt"
 $DONE          = "$LuaDir\ManualSave_Done.txt"
-$SAVES         = "$env:USERPROFILE\Zomboid\Saves"
-$BACKUPS       = "$env:USERPROFILE\Zomboid\ManualSaves"
-$THUMBS        = "$env:USERPROFILE\Zomboid\Saves\ManualSave_Thumbs"
+$SAVES         = "$ZomboidRoot\Saves"
+$BACKUPS       = "$ZomboidRoot\ManualSaves"
+$THUMBS        = "$ZomboidRoot\Saves\ManualSave_Thumbs"
 $SCREEN_REQ    = "$LuaDir\ManualSave_ScreenReq.txt"
 $SCREEN_DONE   = "$LuaDir\ManualSave_ScreenDone.txt"
 $SCREEN_LOG    = "$LuaDir\ManualSave_ScreenLog.txt"
@@ -84,6 +128,7 @@ $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
 }
 
 Write-Host "[ManualSave_Watcher] Starting..."
+Write-Host "[ManualSave_Watcher] UserDir: $ZomboidRoot  ($_userDirSource)"
 Write-Host "[ManualSave_Watcher] Signal : $SIGNAL"
 Write-Host "[ManualSave_Watcher] Backups: $BACKUPS"
 
