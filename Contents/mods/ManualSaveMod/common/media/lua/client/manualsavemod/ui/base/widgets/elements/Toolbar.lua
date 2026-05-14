@@ -41,18 +41,25 @@ function ManualSave.makeToolbar(parent, opts)
         }
     end
 
-    -- Compute minimum button width from label text before creating the panel.
+    -- Compute per-button natural widths from label text.
     -- Items with arrowFn need extra space for the sort arrow (+9px).
     local totalGap = gap * math.max(0, #opts.items - 1)
-    local minBtnW = 0
+    local btnWidths = {}
+    local naturalW  = totalGap
     for _, item in ipairs(opts.items) do
         local tw = getTextManager():MeasureStringX(UIFont.Small, item.label or "")
         local aw = item.arrowFn and 9 or 0
-        minBtnW = math.max(minBtnW, tw + aw + 16)
+        local bw = tw + aw + 16
+        table.insert(btnWidths, bw)
+        naturalW = naturalW + bw
     end
-    local evenSplit = math.floor((opts.w - totalGap) / math.max(1, #opts.items))
-    local btnW    = math.max(minBtnW, evenSplit)
-    local totalW  = btnW * #opts.items + totalGap
+    -- If opts.w exceeds the natural total, spread the extra space evenly.
+    local totalW = math.max(opts.w, naturalW)
+    local extra  = totalW - naturalW
+    if extra > 0 and #btnWidths > 0 then
+        local each = math.floor(extra / #btnWidths)
+        for i = 1, #btnWidths do btnWidths[i] = btnWidths[i] + each end
+    end
 
     local p = ISPanel:new(opts.x, opts.y, math.max(opts.w, totalW), opts.h)
     p.backgroundColor = { r=0, g=0, b=0, a=0 }
@@ -61,8 +68,9 @@ function ManualSave.makeToolbar(parent, opts)
     p:instantiate()
 
     local cx = 0
-    for _, item in ipairs(opts.items) do
-        local id = item.id
+    for idx, item in ipairs(opts.items) do
+        local id   = item.id
+        local btnW = btnWidths[idx]
         local function handleClick(_)
             local s = state[id]
             if not s or not s.enabled then return end

@@ -391,7 +391,7 @@ function ManualSave.openEditModsScreen(opts)
 
     -- ── Footer: name label + name input + buttons ───────────────────────────────
     local defaultName = ManualSave.sanitize(
-        (save.slot or "") .. getText("UI_MSM_EditMods_DefaultSuffix"))
+        (save.slot or "") .. "_modded")
 
     ManualSave.makeLabel(p, {
         x = PAD, y = nameAreaY, w = W - PAD * 2, h = FHS,

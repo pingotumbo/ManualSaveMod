@@ -222,10 +222,17 @@ function ManualSave.makeInfoButton(parent, opts)
             _activePopup = nil
             return
         end
+        local dynW = popW
+        for _, l in ipairs(lines) do
+            if l[1] and l[1] ~= "" then
+                local tw = getTextManager():MeasureStringX(UIFont.Small, l[1])
+                if tw + TH.PAD * 2 > dynW then dynW = tw + TH.PAD * 2 end
+            end
+        end
         local ax = btn:getAbsoluteX() + sz + 4
         local ay = btn:getAbsoluteY()
         local popup = ManualSave.makePopupPanel({
-            w=popW, h=popH, anchorX=ax, anchorY=ay,
+            w=dynW, h=popH, anchorX=ax, anchorY=ay,
         })
         _activePopup = popup
         popup.onClose(function() _activePopup = nil end)
@@ -288,12 +295,10 @@ function ManualSave.makeToggleCard(parent, opts)
                 fc:drawRectBorder(0, 0, fc.width, fc.height, 1,
                     TH.LINE_R*0.6, TH.LINE_G*0.6, TH.LINE_B*0.6)
             end
-            local cbText = isOn and "[x]" or "[ ]"
-            local cbR = isOn and TH.DANGER_R       or TH.MUTED_R * 0.7
-            local cbG = isOn and TH.DANGER_G + 0.1 or TH.MUTED_G * 0.7
-            local cbB = isOn and TH.DANGER_B + 0.05 or TH.MUTED_B * 0.7
-            fc:drawText(cbText, 10, 4, cbR, cbG, cbB, 1, UIFont.Small)
-            local cbW = getTextManager():MeasureStringX(UIFont.Small, "[x] ")
+            local cbSz = 13
+            local cbY2 = 4 + math.floor((FHS - cbSz) / 2)
+            ManualSave.Draw.checkbox(fc, 10, cbY2, cbSz, isOn)
+            local cbW = cbSz + 8
             fc:drawText(label, 10 + cbW, 4,
                 isOn and TH.TEXT_R or TH.MUTED_R,
                 isOn and TH.TEXT_G or TH.MUTED_G,

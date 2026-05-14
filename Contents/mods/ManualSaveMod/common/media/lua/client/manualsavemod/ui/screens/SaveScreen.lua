@@ -118,15 +118,10 @@ function ManualSave.openSaveScreen()
                 ManualSave.closeSaveScreen()
                 ManualSave.SaveManager.quickSave(name)
             else
+                ManualSave.closeSaveScreen()
                 ManualSave.openFullSaveDialog({
-                    onExit   = function()
-                        ManualSave.closeSaveScreen()
-                        ManualSave.SaveManager.fullSave(name, false)
-                    end,
-                    onReturn = function()
-                        ManualSave.closeSaveScreen()
-                        ManualSave.SaveManager.fullSave(name, true)
-                    end,
+                    onExit   = function() ManualSave.SaveManager.fullSave(name, false) end,
+                    onReturn = function() ManualSave.SaveManager.fullSave(name, true)  end,
                 })
             end
         end,

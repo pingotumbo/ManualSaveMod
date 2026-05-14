@@ -64,9 +64,15 @@ function ManualSave.openMoreScreen()
     _mapExpand  = exp.mapExpand
     _modsExpand = exp.modsExpand
 
+    local FHS  = TH.FONT_HGT_SMALL
+    local btnH = TH.BUTTON_HGT
+    local mapModsH  = FHS + 10 + (FHS + 4) * 6 + 4   -- secH from makeMapModsLists
+    local recoveryH = 10 * FHS + 80 + 2 * btnH        -- makeRecoveryFlags total height
+    local alignedRY = (y + mapModsH) - recoveryH      -- Recovery bottom == MapMods bottom
+
     local ry = 0
     ry = ry + ManualSave.makeSaveActions(cols.right,    { y=ry, w=cols.rightW, save=m, st=st })
-    ry = ry + TH.GAP
+    ry = math.max(ry + TH.GAP, alignedRY)
     ManualSave.makeRecoveryFlags(cols.right, { y=ry, w=cols.rightW, save=m, st=st })
 
     ManualSave.UI.evalConditions()

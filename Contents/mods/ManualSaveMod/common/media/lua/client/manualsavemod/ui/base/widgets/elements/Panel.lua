@@ -345,4 +345,25 @@ function ManualSave.makeWatcherStatusDot(titleBar, opts)
     end
 end
 
+-- Creates a 1-pixel horizontal separator using the LINE colour from Theme.
+-- Avoids any direct drawing in screen code.
+--
+-- opts:
+--   x, y    number
+--   w       number
+--   alpha   number?   opacity (default 0.3)
+--
+---@param parent ISPanel?
+---@param opts { x:number, y:number, w:number, alpha:number? }
+---@return ISPanel
+function ManualSave.makeSeparatorLine(parent, opts)
+    local TH = ManualSave.Theme
+    local a  = opts.alpha or 0.3
+    return ManualSave.makePanel(parent, {
+        x=opts.x or 0, y=opts.y, w=opts.w, h=1,
+        bg={ r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=a },
+        border=false,
+    })
+end
+
 print("[ManualSaveMod] UI/Base/Widgets/Elements/Panel.lua loaded.")

@@ -31,6 +31,9 @@ ManualSave.Theme = {
     -- Native save tag (teal)
     NATIVE_R = 0.25,  NATIVE_G = 0.68,  NATIVE_B = 0.72,
 
+    -- Warning (amber) — used for missing mods and caution states
+    WARN_R   = 0.92,  WARN_G   = 0.78,  WARN_B   = 0.22,
+
     -- ── Overlay ───────────────────────────────────────────────────────────────
 
     OVERLAY_A      = 0.72,  -- alpha for modal blocking overlay

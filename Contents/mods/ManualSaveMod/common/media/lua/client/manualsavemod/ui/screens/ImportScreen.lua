@@ -22,11 +22,19 @@ function ManualSave.ImportScreen.readScanFile()
         if not line then break end
         line = line:match("^%s*(.-)%s*$") or ""
         if line == "##SCAN_DONE##" then break end
-        local gmode, world, date, imp = line:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)$")
+        local gmode, world, date, imp, sizeMB = line:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)|([^|]*)$")
+        if not gmode then
+            gmode, world, date, imp = line:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)$")
+        end
         if gmode and gmode ~= "" and world and world ~= "" then
+            local sz = tonumber(sizeMB)
             table.insert(entries, {
-                gmode=gmode, world=world, date=date or "",
-                imported=(imp == "1"), checked=false,
+                gmode    = gmode,
+                world    = world,
+                date     = date or "",
+                imported = (imp == "1"),
+                sizeMB   = sz or 0,
+                checked  = false,
             })
         end
     end
@@ -38,16 +46,37 @@ function ManualSave.ImportScreen.writeQueueFile(items)
     local w = getFileWriter(QUEUE_FILE, true, false)
     if not w then return false end
     for _, e in ipairs(items) do
-        if e.checked then w:write(e.gmode .. "|" .. e.world .. "\r\n") end
+        if not e.isHeader and e.checked then
+            w:write(e.gmode .. "|" .. e.world .. "\r\n")
+        end
     end
     w:close()
     return true
 end
 
-function ManualSave.ImportScreen.countChecked(items)
-    local n = 0
-    for _, e in ipairs(items) do if e.checked then n = n + 1 end end
-    return n
+local function countChecked(flatItems)
+    local n, mb = 0, 0
+    for _, e in ipairs(flatItems) do
+        if not e.isHeader and e.checked then
+            n  = n  + 1
+            mb = mb + (e.sizeMB or 0)
+        end
+    end
+    return n, mb
+end
+
+-- ── Sort helpers ───────────────────────────────────────────────────────────────
+-- sortMode: "name_asc" | "name_desc" | "date_new" | "date_old"
+local function sortFlat(items, mode)
+    if mode == "name_asc" then
+        table.sort(items, function(a, b) return (a.world or ""):lower() < (b.world or ""):lower() end)
+    elseif mode == "name_desc" then
+        table.sort(items, function(a, b) return (a.world or ""):lower() > (b.world or ""):lower() end)
+    elseif mode == "date_new" then
+        table.sort(items, function(a, b) return (a.date or "") > (b.date or "") end)
+    elseif mode == "date_old" then
+        table.sort(items, function(a, b) return (a.date or "") < (b.date or "") end)
+    end
 end
 
 -- ── Screen ────────────────────────────────────────────────────────────────────
@@ -56,27 +85,55 @@ function ManualSave.openImportScreen()
     if _screen then _screen.panel:bringToTop(); return end
     if _importing then return end
 
-    local TH    = ManualSave.Theme
-    local PAD   = TH.PAD
+    local TH   = ManualSave.Theme
+    local PAD  = TH.PAD
+    local GAP  = TH.GAP
+    local FHS  = TH.FONT_HGT_SMALL
+    local BTNH = TH.BUTTON_HGT
 
-    -- Footer button widths from translated text.
-    local cancelW     = ManualSave.textBtnW(getText("UI_MSM_Common_BtnCancel"),        60)
-    local selectAllW  = ManualSave.textBtnW(getText("UI_MSM_Import_BtnSelectAll"),     70)
-    local unimportedW = ManualSave.textBtnW(getText("UI_MSM_Import_BtnUnimported"),    80)
-    local importBtnW  = ManualSave.textBtnW(getText("UI_MSM_Import_BtnImport"),       120)
-    -- Left group: Cancel + SelectAll + Unimported.  Right group: ? (28px fixed) + Import.
+    local ITEM_ROW_H = FHS * 2 + 10
+
+    -- Sort cycle: name_asc → name_desc → date_new → date_old → name_asc
+    local SORT_CYCLE = { "name_asc", "name_desc", "date_new", "date_old" }
+    local SORT_KEYS  = {
+        name_asc  = "UI_MSM_Import_SortNameAsc",
+        name_desc = "UI_MSM_Import_SortNameDesc",
+        date_new  = "UI_MSM_Import_SortDateNew",
+        date_old  = "UI_MSM_Import_SortDateOld",
+    }
+    local sortMode = "date_new"
+
+    -- Filter cycle: "all" → "unimported" → "imported" → "all"
+    -- (button label always shows the CURRENT filter state)
+    local FILTER_CYCLE = { "all", "unimported", "imported" }
+    local filterMode   = "all"
+
+    -- Measure button widths from all possible labels
+    local sortBtnW = 0
+    for _, k in ipairs(SORT_CYCLE) do
+        sortBtnW = math.max(sortBtnW,
+            getTextManager():MeasureStringX(UIFont.Small, getText(SORT_KEYS[k])) + 16)
+    end
+    local cancelW    = ManualSave.textBtnW(getText("UI_MSM_Common_BtnCancel"),       60)
+    local selectAllW = math.max(
+        ManualSave.textBtnW(getText("UI_MSM_Import_BtnSelectAll"),   70),
+        ManualSave.textBtnW(getText("UI_MSM_Import_BtnUnselectAll"), 70))
+    local filterW = math.max(
+        ManualSave.textBtnW(getText("UI_MSM_Import_FilterAll"),        80),
+        ManualSave.textBtnW(getText("UI_MSM_Import_FilterUnimported"), 80),
+        ManualSave.textBtnW(getText("UI_MSM_Import_FilterImported"),   80))
+    local importBtnW = math.max(180, ManualSave.textBtnW(getText("UI_MSM_Import_BtnImport"), 120))
+
     local W = math.max(600,
-        PAD + cancelW + TH.GAP + selectAllW + TH.GAP + unimportedW + TH.GAP
-        + 28 + TH.GAP + importBtnW + PAD)
-    local H  = 480
-    local BTNH  = TH.BUTTON_HGT
-    local FHS   = TH.FONT_HGT_SMALL
-    local ROW_H = FHS * 2 + 10
+        PAD + cancelW + GAP + selectAllW + GAP + filterW + GAP + sortBtnW
+        + GAP + 28 + GAP + importBtnW + PAD)
+    local H = 480
 
-    local phase    = "scanning"
-    local allItems = {}
+    local phase     = "scanning"
+    local allFlat   = {}   -- raw flat list from scan (no headers)
+    local displayed = {}   -- grouped list shown in scrollList
     local searchTxt = ""
-    local errMsg   = ""
+    local errMsg    = ""
 
     local d = ManualSave.makeFloatingPanel({
         w=W, h=H, title=getText("UI_MSM_Import_Title"),
@@ -86,112 +143,197 @@ function ManualSave.openImportScreen()
     local titleH = d.titleH
     _screen = d
 
-    -- Status bar
+    -- ── Forward refs ──────────────────────────────────────────────────────────
+    local scrollList
+    local sortBtnHandle
+    local selectBtnHandle
+    local filterBtnHandle
+
+    -- ── Rebuild displayed list ────────────────────────────────────────────────
+    local function rebuild()
+        local term = searchTxt
+        local filtered = {}
+        for _, e in ipairs(allFlat) do
+            local matchS = term == "" or
+                (e.world or ""):lower():find(term, 1, true) or
+                (e.gmode or ""):lower():find(term, 1, true)
+            local matchF = filterMode == "all"
+                or (filterMode == "unimported" and not e.imported)
+                or (filterMode == "imported"   and     e.imported)
+            if matchS and matchF then table.insert(filtered, e) end
+        end
+        sortFlat(filtered, sortMode)
+        displayed = filtered
+        if scrollList then scrollList.setItems(displayed, true) end
+
+        -- Update select button label
+        if selectBtnHandle then
+            local allChecked = true
+            for _, e in ipairs(filtered) do
+                if not e.checked then allChecked = false; break end
+            end
+            selectBtnHandle.setLabel(allChecked and
+                getText("UI_MSM_Import_BtnUnselectAll") or
+                getText("UI_MSM_Import_BtnSelectAll"))
+        end
+
+        -- Update filter button label
+        if filterBtnHandle then
+            local lbl = filterMode == "unimported" and getText("UI_MSM_Import_FilterUnimported")
+                     or filterMode == "imported"   and getText("UI_MSM_Import_FilterImported")
+                     or getText("UI_MSM_Import_FilterAll")
+            filterBtnHandle.setLabel(lbl)
+        end
+
+        -- Update sort button label
+        if sortBtnHandle then
+            sortBtnHandle.setLabel(getText(SORT_KEYS[sortMode]))
+        end
+    end
+
+    -- ── Status bar ────────────────────────────────────────────────────────────
     local statusH = FHS + 10
     ManualSave.makeLabel(p, {
         x=0, y=titleH, w=W, h=statusH,
         bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B, a=1 },
         textX=PAD, textY=5,
         getText = function()
-            if phase == "scanning" then
-                return getText("UI_MSM_Import_Scanning")
-            elseif phase == "ready" then
-                local n = #allItems
-                return n > 0
-                    and (n .. " " .. (n ~= 1 and getText("UI_MSM_Import_FoundPlural") or getText("UI_MSM_Import_FoundSingle")) .. getText("UI_MSM_Import_FoundSuffix"))
-                    or  getText("UI_MSM_Import_NoSaves")
-            else
-                return getText("UI_MSM_Import_ErrPrefix") .. errMsg
+            if phase == "scanning" then return getText("UI_MSM_Import_Scanning") end
+            if phase ~= "ready"   then return getText("UI_MSM_Import_ErrPrefix") .. errMsg end
+            local n     = #allFlat
+            local sel, mb = countChecked(allFlat)
+            local base  = n .. " " .. (n ~= 1 and getText("UI_MSM_Import_FoundPlural") or getText("UI_MSM_Import_FoundSingle"))
+            if sel > 0 then
+                base = base .. "   " .. sel .. " " .. getText("UI_MSM_Import_Selected")
+                if mb > 0 then base = base .. " " .. mb .. " MB" end
             end
+            return base
         end,
         getR = function() return phase == "ready" and TH.TEXT_R or (phase == "scanning" and TH.MUTED_R or TH.DANGER_R) end,
         getG = function() return phase == "ready" and TH.TEXT_G or (phase == "scanning" and TH.MUTED_G or TH.DANGER_G) end,
         getB = function() return phase == "ready" and TH.TEXT_B or (phase == "scanning" and TH.MUTED_B or TH.DANGER_B) end,
     })
 
-    -- Search + list
-    local searchY = titleH + statusH + 4
-    local list    -- forward ref; set below before any callback fires
-
+    -- ── Search ────────────────────────────────────────────────────────────────
+    local searchY = titleH + statusH + GAP
     ManualSave.makeTextInput(p, {
         x=PAD, y=searchY, w=W - PAD * 2, h=BTNH,
         icon="search", placeholder=getText("UI_MSM_Import_SearchPlaceholder"),
-        onChange = function(text)
-            searchTxt = text:lower()
-            if not list then return end
-            if searchTxt == "" then list.setItems(allItems); return end
-            local out = {}
-            for _, e in ipairs(allItems) do
-                if (e.world or ""):lower():find(searchTxt, 1, true)
-                or (e.gmode or ""):lower():find(searchTxt, 1, true) then
-                    table.insert(out, e)
-                end
-            end
-            list.setItems(out)
-        end,
+        onChange = function(text) searchTxt = text:lower(); rebuild() end,
     })
 
-    local listY = searchY + BTNH + 4
-    local listH = H - listY - BTNH - PAD * 2 - 4
+    -- ── Scroll list ───────────────────────────────────────────────────────────
+    local listY = searchY + BTNH + GAP
+    local listH = H - listY - BTNH - PAD * 2 - GAP
 
-    list = ManualSave.makeScrollList(p, {
+    scrollList = ManualSave.makeScrollList(p, {
         x=PAD, y=listY, w=W - PAD * 2, h=listH,
-        rowH=ROW_H, items=allItems,
-        drawRow = function(panel, item, rx, ry, rw, rh, sel, _)
+        rowH     = ITEM_ROW_H,
+        items    = displayed,
+        bg       = { r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
+        drawRow  = function(panel, item, rx, ry, rw, rh, _, _)
             if item.checked then
                 panel:drawRect(rx, ry, rw, rh, 0.10, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-            elseif sel then
-                panel:drawRect(rx, ry, rw, rh, 0.06, 1, 1, 1)
             end
-            local cbW    = getTextManager():MeasureStringX(UIFont.Small, "[x] ")
+            ManualSave.Draw.separator(panel, rx, ry + rh - 1, rw, 0.12)
+
+            local cbSz = 13
+            local cbX  = rx + 8
+            local cbY  = ry + math.floor((rh - cbSz) / 2)
+            ManualSave.Draw.checkbox(panel, cbX, cbY, cbSz, item.checked)
+
+            local nameX  = cbX + cbSz + 8
+            local alpha  = item.imported and 0.55 or 1
             local lineY  = ry + math.floor((rh / 2) - FHS) - 1
             local line2Y = lineY + FHS + 2
-            local cbR    = item.checked and TH.ACCENT_R or TH.MUTED_R * 0.6
-            local cbG    = item.checked and TH.ACCENT_G or TH.MUTED_G * 0.6
-            local cbB    = item.checked and TH.ACCENT_B or TH.MUTED_B * 0.6
-            panel:drawText(item.checked and "[x]" or "[ ]", rx + 4, lineY, cbR, cbG, cbB, 1, UIFont.Small)
-            local nameX = rx + 4 + cbW
-            local alpha = item.imported and 0.55 or 1
-            panel:drawText(item.world, nameX, lineY, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, alpha, UIFont.Small)
+
+            panel:drawText(item.world, nameX, lineY,
+                TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, alpha, UIFont.Small)
             if item.imported then
                 local iw = getTextManager():MeasureStringX(UIFont.Small, item.world)
-                panel:drawText("  " .. getText("UI_MSM_Import_BadgReimport"), nameX + iw, lineY,
-                    TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.4, UIFont.Small)
+                ManualSave.Draw.badge(panel, nameX + iw + 6, lineY + 1,
+                    getText("UI_MSM_Import_BadgeReimport"), "dim")
             end
-            panel:drawText(item.gmode, nameX, line2Y, TH.DIM_R, TH.DIM_G, TH.DIM_B, 0.7, UIFont.Small)
+
+            panel:drawText(item.gmode, nameX, line2Y,
+                TH.DIM_R, TH.DIM_G, TH.DIM_B, 0.7, UIFont.Small)
             if item.date ~= "" then
                 local gmW = getTextManager():MeasureStringX(UIFont.Small, item.gmode)
                 panel:drawText(item.date, nameX + gmW + 10, line2Y,
                     TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.45, UIFont.Small)
             end
+
+            if item.sizeMB and item.sizeMB > 0 then
+                local szStr = tostring(item.sizeMB) .. " MB"
+                local szW   = getTextManager():MeasureStringX(UIFont.Small, szStr)
+                panel:drawText(szStr, rx + rw - 14 - szW, ry + math.floor((rh - FHS) / 2),
+                    TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.45, UIFont.Small)
+            end
         end,
-        onSelect = function(item, _) item.checked = not item.checked end,
+        onSelect = function(item, _)
+            item.checked = not item.checked
+            rebuild()
+        end,
     })
 
-    -- Footer buttons — positions computed from text-based widths.
-    local btnY      = H - BTNH - PAD
+    -- ── Footer buttons ────────────────────────────────────────────────────────
+    local btnY        = H - BTNH - PAD
     local cancelX     = PAD
-    local selectAllX  = cancelX    + cancelW     + TH.GAP
-    local unimportedX = selectAllX + selectAllW  + TH.GAP
+    local selectAllX  = cancelX    + cancelW    + GAP
+    local filterX     = selectAllX + selectAllW + GAP
+    local sortX       = filterX    + filterW    + GAP
     local importBtnX  = W - PAD - importBtnW
-    local helpX       = importBtnX - TH.GAP - 28
+    local helpX       = importBtnX - GAP - 28
 
     ManualSave.makeButton(p, {
-        x=cancelX, y=btnY, w=cancelW, h=BTNH, label=getText("UI_MSM_Common_BtnCancel"), style="normal",
+        x=cancelX, y=btnY, w=cancelW, h=BTNH,
+        label=getText("UI_MSM_Common_BtnCancel"), style="normal",
         onClick = function() ManualSave.closeImportScreen() end,
     })
-    ManualSave.makeButton(p, {
-        x=selectAllX, y=btnY, w=selectAllW, h=BTNH, label=getText("UI_MSM_Import_BtnSelectAll"), style="normal",
+
+    selectBtnHandle = ManualSave.makeButton(p, {
+        x=selectAllX, y=btnY, w=selectAllW, h=BTNH,
+        label=getText("UI_MSM_Import_BtnSelectAll"), style="normal",
         onClick = function()
             if phase ~= "ready" then return end
-            for _, e in ipairs(allItems) do e.checked = true end
+            local allChecked = true
+            for _, e in ipairs(displayed) do
+                if not e.isHeader and not e.checked then allChecked = false; break end
+            end
+            for _, e in ipairs(displayed) do
+                if not e.isHeader then e.checked = not allChecked end
+            end
+            rebuild()
         end,
     })
-    ManualSave.makeButton(p, {
-        x=unimportedX, y=btnY, w=unimportedW, h=BTNH, label=getText("UI_MSM_Import_BtnUnimported"), style="normal",
+
+    filterBtnHandle = ManualSave.makeButton(p, {
+        x=filterX, y=btnY, w=filterW, h=BTNH,
+        label=getText("UI_MSM_Import_FilterAll"), style="normal",
         onClick = function()
             if phase ~= "ready" then return end
-            for _, e in ipairs(allItems) do e.checked = not e.imported end
+            local cur = filterMode
+            local next = FILTER_CYCLE[1]
+            for i, v in ipairs(FILTER_CYCLE) do
+                if v == cur then next = FILTER_CYCLE[(i % #FILTER_CYCLE) + 1]; break end
+            end
+            filterMode = next
+            rebuild()
+        end,
+    })
+
+    sortBtnHandle = ManualSave.makeButton(p, {
+        x=sortX, y=btnY, w=sortBtnW, h=BTNH,
+        label=getText(SORT_KEYS[sortMode]), style="normal",
+        onClick = function()
+            if phase ~= "ready" then return end
+            local cur = sortMode
+            local next = SORT_CYCLE[1]
+            for i, v in ipairs(SORT_CYCLE) do
+                if v == cur then next = SORT_CYCLE[(i % #SORT_CYCLE) + 1]; break end
+            end
+            sortMode = next
+            rebuild()
         end,
     })
 
@@ -203,24 +345,27 @@ function ManualSave.openImportScreen()
     })
 
     ManualSave.makeButton(p, {
-        x=importBtnX, y=btnY, w=importBtnW, h=BTNH, label=getText("UI_MSM_Import_BtnImport"), style="primary", enabled=false,
+        x=importBtnX, y=btnY, w=importBtnW, h=BTNH,
+        label=getText("UI_MSM_Import_BtnImport"), style="primary", enabled=false,
         update = function(self2)
-            local n = ManualSave.ImportScreen.countChecked(allItems)
-            self2:setTitle(n > 0 and getText("UI_MSM_Import_BtnImportN", tostring(n)) or getText("UI_MSM_Import_BtnImport"))
+            local n = countChecked(allFlat)
+            self2:setTitle(n > 0
+                and getText("UI_MSM_Import_BtnImportN", tostring(n))
+                or  getText("UI_MSM_Import_BtnImport"))
             self2:setEnable(phase == "ready" and n > 0)
         end,
         onClick = function()
             if phase ~= "ready" then return end
-            local n = ManualSave.ImportScreen.countChecked(allItems)
+            local n = countChecked(allFlat)
             if n == 0 then return end
-            if not ManualSave.ImportScreen.writeQueueFile(allItems) then
+            if not ManualSave.ImportScreen.writeQueueFile(allFlat) then
                 phase = "error"; errMsg = getText("UI_MSM_Import_ErrQueueFile"); return
             end
             _importing = true; _screen = nil; d.close()
             ManualSave.SignalBus.send("IMPORT", nil, function(status)
                 _importing = false
                 if status == "OK" then
-                    for _, e in ipairs(allItems) do
+                    for _, e in ipairs(allFlat) do
                         if e.checked then
                             pcall(ManualSave.MetaCache.tryEnrichNative, e.gmode, e.world, e.world)
                         end
@@ -234,12 +379,14 @@ function ManualSave.openImportScreen()
         end,
     })
 
-    -- Kick off scan
+    -- ── Kick off scan ─────────────────────────────────────────────────────────
     ManualSave.SignalBus.send("SCAN_VANILLA", nil, function(status)
-        if status ~= "OK" then phase = "error"; errMsg = getText("UI_MSM_Import_ErrScanFailed"); return end
-        allItems = ManualSave.ImportScreen.readScanFile()
-        list.setItems(allItems)
-        phase = "ready"
+        if status ~= "OK" then
+            phase = "error"; errMsg = getText("UI_MSM_Import_ErrScanFailed"); return
+        end
+        allFlat = ManualSave.ImportScreen.readScanFile()
+        phase   = "ready"
+        rebuild()
     end, 3600)
 
     d.open()

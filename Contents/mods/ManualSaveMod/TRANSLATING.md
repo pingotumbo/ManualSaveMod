@@ -13,11 +13,8 @@
 
 ## Rules
 
-- Keep `\n` in place   it is a line break, not visible text.
-- Keep `%1`, `%2` etc.  
-
-
- they are runtime placeholders.
+- Keep `\n` in place — it is a line break, not visible text.
+- Keep `%1`, `%2` etc. — they are runtime placeholders.
 - Keep the JSON syntax intact (quotes, commas).
 
 ## Language codes
@@ -33,17 +30,19 @@
 
 Full list: [pzwiki.net/wiki/Translations](https://pzwiki.net/wiki/Translations)
 
-## Key prefixes
+---
 
-| Prefix | Area |
-|--------|------|
-| `UI_MSM_Common_` | Shared buttons and warnings |
-| `UI_MSM_Save_` | Save screen |
-| `UI_MSM_Load_` | Load screen |
-| `UI_MSM_Dialog_` | Confirmation dialogs |
-| `UI_MSM_Ops_` | Save operations panel |
-| `UI_MSM_Help_` | In-game help screen |
+## Sections
+
+You do not have to translate everything. The UI strings are the most useful.
+The Help section is large and entirely optional — untranslated keys fall back
+to English automatically.
+
+The full list of keys is in `42/media/lua/shared/Translate/EN/UI.json`.
+
+---
 
 ## Submit
 
-Open a pull request or send the file directly via Steam.
+Open a pull request on GitHub or send the file directly via the Steam Workshop
+discussion thread.

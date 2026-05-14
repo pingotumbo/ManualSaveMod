@@ -5,8 +5,7 @@
 
 ManualSave = ManualSave or {}
 
-local sanitize    = ManualSave.sanitize
-local slotDisplay = ManualSave.slotDisplay
+local sanitize = ManualSave.sanitize
 
 -- SAVE ACTIONS + WORLD ACTIONS button group.
 -- opts: { y, w, save, st }
@@ -16,7 +15,6 @@ function ManualSave.makeSaveActions(parent, opts)
     local FHS      = TH.FONT_HGT_SMALL
     local btnH     = TH.BUTTON_HGT
     local w        = opts.w
-    local m        = opts.save
     local st       = opts.st
     local halfBtnW = math.floor((w - TH.GAP) / 2)
     local ry       = opts.y
@@ -148,34 +146,22 @@ function ManualSave.makeSaveActions(parent, opts)
     local wa2X = halfBtnW + TH.GAP
     ManualSave.makeButton(parent, {
         x=wa2X, y=ry, w=halfBtnW, h=btnH,
-        label=getText("UI_MSM_Ops_BtnStripMods"), style="danger",
+        label=getText("UI_MSM_Ops_BtnEditMods"), style="danger",
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
-            local old  = st.selected
-            local base = slotDisplay(old.slot) .. " [NO MODS]"
-            ManualSave.openNameInputDialog({
-                title       = getText("UI_MSM_Ops_StripModsTitle"),
-                value       = base,
-                confirm     = getText("UI_MSM_Ops_BtnCreateCopy"),
-                helpSection = "stripmods",
-                onConfirm = function(newName)
-                    newName = sanitize(newName)
-                    if newName == "" then return end
-                    ManualSave.SignalBus.send("CLONE_STRIP",
-                        { GMODE=old.GMODE or old.gameMode, WORLD=old.WORLD or old.world,
-                          OLD_SLOT=old.slot, NEW_SLOT=newName },
-                        function(status)
-                            if status ~= "OK" then return end
-                            ManualSave.MetaCache.copy(old.GMODE or old.gameMode,
-                                old.WORLD or old.world, old.slot, newName, true)
-                            local copy = {}
-                            for k, v in pairs(old) do copy[k] = v end
-                            copy.slot = newName; copy.MODS = ""
-                            table.insert(st.saves, copy)
-                            ManualSave.LoadScreen.applyFilter()
-                        end)
+            ManualSave.openEditModsScreen({
+                save = st.selected,
+                onCreated = function(newName, keptMods, keptIds)
+                    local old  = st.selected
+                    local copy = {}
+                    for k, v in pairs(old) do copy[k] = v end
+                    copy.slot    = newName
+                    copy.MODS    = keptMods or ""
+                    copy.MOD_IDS = keptIds  or ""
+                    table.insert(st.saves, copy)
+                    ManualSave.LoadScreen.applyFilter()
                 end,
             })
         end,
@@ -249,16 +235,9 @@ function ManualSave.makeRecoveryFlags(parent, opts)
               { "",                                                   },
               { getText("UI_MSM_Ops_FlagWipeZombiesInfo3"), "dim"    },
               { getText("UI_MSM_Ops_FlagWipeZombiesInfo4"), "dim"    },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo5"), "dim"    },
               { "",                                                   },
-              { getText("UI_MSM_Ops_FlagWipeZombiesInfo5"), "warn"   },
-          }},
-        },
-        { key="resetPlayerPos", label=getText("UI_MSM_Ops_FlagResetPos"),       desc=getText("UI_MSM_Ops_FlagResetPosDesc"),
-          info = { popW=248, lines = {
-              { getText("UI_MSM_Ops_FlagResetPosInfo1"), "normal" },
-              { getText("UI_MSM_Ops_FlagResetPosInfo2"), "normal" },
-              { "",                                               },
-              { getText("UI_MSM_Ops_FlagResetPosInfo3"), "dim"   },
+              { getText("UI_MSM_Ops_FlagWipeZombiesInfo6"), "warn"   },
           }},
         },
         { key="healPlayer",     label=getText("UI_MSM_Ops_FlagHeal"),           desc=getText("UI_MSM_Ops_FlagHealDesc"),
@@ -269,10 +248,10 @@ function ManualSave.makeRecoveryFlags(parent, opts)
           }},
         },
         { key="resetWeather",   label=getText("UI_MSM_Ops_FlagResetWeather"),   desc=getText("UI_MSM_Ops_FlagResetWeatherDesc"),
-          info = { popW=240, lines = {
+          info = { popW=260, lines = {
               { getText("UI_MSM_Ops_FlagResetWeatherInfo1"), "normal" },
-              { "",                                                    },
-              { getText("UI_MSM_Ops_FlagResetWeatherInfo2"), "dim"    },
+              { getText("UI_MSM_Ops_FlagResetWeatherInfo2"), "normal" },
+              { getText("UI_MSM_Ops_FlagResetWeatherInfo3"), "dim"    },
           }},
         },
         { key="resetTime",      label=getText("UI_MSM_Ops_FlagResetTime"),      desc=getText("UI_MSM_Ops_FlagResetTimeDesc"),
@@ -281,6 +260,7 @@ function ManualSave.makeRecoveryFlags(parent, opts)
               { getText("UI_MSM_Ops_FlagResetTimeInfo2"), "normal" },
               { "",                                                 },
               { getText("UI_MSM_Ops_FlagResetTimeInfo3"), "dim"    },
+              { getText("UI_MSM_Ops_FlagResetTimeInfo4"), "dim"    },
           }},
         },
     }
@@ -351,10 +331,9 @@ function ManualSave.makeRecoveryFlags(parent, opts)
             local anyActive = false
             for _, v in pairs(flags) do if v then anyActive = true; break end end
             if not anyActive then return end
-            local times = { dawn="05:00", midday="12:00", dusk="20:00", midnight="00:00" }
+            local times = { dawn="06:00", midday="12:00", dusk="18:00", midnight="00:00" }
             local lines = {}
             if flags.wipeZombies    then table.insert(lines, getText("UI_MSM_Ops_FlagWipeZombies"))  end
-            if flags.resetPlayerPos then table.insert(lines, getText("UI_MSM_Ops_FlagResetPos"))     end
             if flags.healPlayer     then table.insert(lines, getText("UI_MSM_Ops_FlagHeal"))         end
             if flags.resetWeather   then table.insert(lines, getText("UI_MSM_Ops_FlagResetWeather")) end
             if flags.resetTime then
@@ -371,7 +350,6 @@ function ManualSave.makeRecoveryFlags(parent, opts)
                     local safe = (m.slot or ""):gsub('[\\/:*?"<>|!]', "_"):gsub("%s+", "_")
                     local active = {}
                     if flags.wipeZombies    then table.insert(active, "WIPE_ZOMBIES")     end
-                    if flags.resetPlayerPos then table.insert(active, "RESET_PLAYER_POS") end
                     if flags.healPlayer     then table.insert(active, "HEAL_PLAYER")      end
                     if flags.resetWeather   then table.insert(active, "RESET_WEATHER")    end
                     if flags.resetTime then
@@ -384,7 +362,7 @@ function ManualSave.makeRecoveryFlags(parent, opts)
                         fw:close()
                     end
                     for k in pairs(flags) do flags[k] = false end
-                    ManualSave.closeMoreScreen()
+                    ManualSave.closeLoadScreen()
                     ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
                 end,
             })

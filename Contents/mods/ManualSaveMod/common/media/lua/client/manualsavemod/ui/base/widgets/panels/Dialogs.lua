@@ -9,6 +9,33 @@
 
 ManualSave = ManualSave or {}
 
+-- Splits text on \n and word-wraps each paragraph to fit within maxW pixels.
+-- Returns a flat list of rendered strings (empty string = blank line).
+local function wrapBody(text, maxW)
+    local tm  = getTextManager()
+    local out = {}
+    for para in (text .. "\n"):gmatch("([^\n]*)\n") do
+        if para == "" then
+            table.insert(out, "")
+        elseif tm:MeasureStringX(UIFont.Small, para) <= maxW then
+            table.insert(out, para)
+        else
+            local line = ""
+            for word in (para .. " "):gmatch("([^ ]+) ") do
+                local try = line == "" and word or (line .. " " .. word)
+                if tm:MeasureStringX(UIFont.Small, try) <= maxW then
+                    line = try
+                else
+                    if line ~= "" then table.insert(out, line) end
+                    line = word
+                end
+            end
+            if line ~= "" then table.insert(out, line) end
+        end
+    end
+    return out
+end
+
 -- Opens a blocking confirmation dialog.
 --
 -- opts:
@@ -29,7 +56,10 @@ function ManualSave.openConfirmDialog(opts)
         ManualSave.textBtnW(confirmLabel, 80),
         ManualSave.textBtnW(cancelLabel,  80))
     local W = math.max(360, TH.PAD * 2 + btnW * 2 + TH.GAP)
-    local H = 160
+    local lineH     = TH.FONT_HGT_SMALL + 4
+    local bodyY     = TH.PAD + TH.FONT_HGT_MEDIUM + TH.GAP * 2
+    local bodyLines = wrapBody(opts.body or "", W - TH.PAD * 2)
+    local H = math.max(160, bodyY + #bodyLines * lineH + 48 + TH.GAP)
 
     local d = ManualSave.makeModalPanel({ w=W, h=H })
     local p = d.panel
@@ -40,11 +70,8 @@ function ManualSave.openConfirmDialog(opts)
         local ty = TH.PAD
         self2:drawText(opts.title or "",
             TH.PAD, ty, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Medium)
-        -- Body (allow two lines via \n)
-        local body = opts.body or ""
-        local lineH = TH.FONT_HGT_SMALL + 4
         local by = ty + TH.FONT_HGT_MEDIUM + TH.GAP * 2
-        for line in (body .. "\n"):gmatch("([^\n]*)\n") do
+        for _, line in ipairs(bodyLines) do
             self2:drawText(line, TH.PAD, by,
                 TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 1, UIFont.Small)
             by = by + lineH
