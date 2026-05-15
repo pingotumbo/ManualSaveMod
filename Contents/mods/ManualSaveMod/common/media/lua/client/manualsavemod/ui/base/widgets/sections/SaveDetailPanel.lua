@@ -103,6 +103,19 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
             value       = ManualSave.nextCopyName(old.slot, st.saves),
             confirm     = getText("UI_MSM_Detail_BtnDuplicate"),
             helpSection = "duplicate",
+            names = (function()
+                local st2 = ManualSave.LoadScreen._state
+                if not st2 then return {} end
+                local gmode = old.GMODE or old.gameMode
+                local world = old.WORLD or old.world
+                local ns = {}
+                for _, b in ipairs(st2.saves) do
+                    if (b.GMODE or b.gameMode) == gmode and (b.WORLD or b.world) == world then
+                        table.insert(ns, b.slot)
+                    end
+                end
+                return ns
+            end)(),
             onConfirm = function(newName)
                 newName = sanitize(newName)
                 if newName == "" then return end

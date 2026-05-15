@@ -1,7 +1,7 @@
 -- UI/Base/Widgets/Panels/StyledText.lua
 -- Scrollable styled-text panel. Full scroll state management (wheel + drag).
 -- Used by HelpScreen content area; exported as a generic factory.
----@diagnostic disable: undefined-global, undefined-doc-name
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, need-check-nil
 
 ManualSave = ManualSave or {}
 

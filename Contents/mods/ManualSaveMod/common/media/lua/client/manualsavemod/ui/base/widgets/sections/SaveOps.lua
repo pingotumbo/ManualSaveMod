@@ -32,29 +32,34 @@ function ManualSave.makeSaveActions(parent, opts)
     ry = ry + sectionLbl(ry, getText("UI_MSM_Ops_HeaderSaveActions"))
     ManualSave.makeButton(parent, {
         x=0, y=ry, w=halfBtnW, h=btnH,
-        label=getText("UI_MSM_Ops_BtnRename"), style="normal",
+        label=getText("UI_MSM_Ops_BtnExportVanilla"), style="normal",
         groups={"bat_required"},
         onClick = function()
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
+            local m2 = st.selected
             ManualSave.openNameInputDialog({
-                title       = getText("UI_MSM_Ops_RenameTitle"),
-                value       = st.selected.slot,
-                confirm     = getText("UI_MSM_Common_BtnRename"),
-                helpSection = "rename",
-                onConfirm = function(newName)
-                    newName = sanitize(newName)
-                    if newName == "" or newName == st.selected.slot then return end
-                    local old = st.selected
-                    ManualSave.SaveManager.rename(old.GMODE or old.gameMode,
-                        old.WORLD or old.world, old.slot, newName,
-                        function(status)
-                            if status == "OK" then
-                                old.slot = newName
-                                ManualSave.LoadScreen.applyFilter()
-                                ManualSave.closeMoreScreen()
-                            end
-                        end)
+                title       = getText("UI_MSM_Ops_ExportVanillaTitle"),
+                value       = m2.slot .. "_exported",
+                confirm     = getText("UI_MSM_Ops_BtnExportVanilla"),
+                helpSection = "exportvanilla",
+                names = (function()
+                    local gmode = m2.GMODE or m2.gameMode
+                    local ns, seen = {}, {}
+                    for _, b in ipairs(st.saves) do
+                        if (b.GMODE or b.gameMode) == gmode then
+                            local sn = b.slot
+                            if not seen[sn] then seen[sn] = true; table.insert(ns, sn) end
+                        end
+                    end
+                    return ns
+                end)(),
+                onConfirm = function(exportName)
+                    exportName = sanitize(exportName)
+                    if exportName == "" then return end
+                    ManualSave.SignalBus.send("EXPORT_VANILLA",
+                        { GMODE=m2.GMODE or m2.gameMode, WORLD=m2.WORLD or m2.world, SLOT=m2.slot, EXPORT_NAME=exportName },
+                        function() end)
                 end,
             })
         end,
@@ -71,6 +76,18 @@ function ManualSave.makeSaveActions(parent, opts)
                 value       = ManualSave.nextCopyName(st.selected.slot, st.saves),
                 confirm     = getText("UI_MSM_Ops_BtnDuplicate"),
                 helpSection = "duplicate",
+                names = (function()
+                    local sel = st.selected
+                    local gmode = sel.GMODE or sel.gameMode
+                    local world = sel.WORLD or sel.world
+                    local ns = {}
+                    for _, b in ipairs(st.saves) do
+                        if (b.GMODE or b.gameMode) == gmode and (b.WORLD or b.world) == world then
+                            table.insert(ns, b.slot)
+                        end
+                    end
+                    return ns
+                end)(),
                 onConfirm = function(newName)
                     newName = sanitize(newName)
                     if newName == "" then return end
@@ -110,6 +127,17 @@ function ManualSave.makeSaveActions(parent, opts)
                 value       = old.world or old.WORLD or "",
                 confirm     = getText("UI_MSM_Common_BtnRename"),
                 helpSection = "renameworld",
+                names = (function()
+                    local gmode = old.GMODE or old.gameMode
+                    local ns, seen = {}, {}
+                    for _, b in ipairs(st.saves) do
+                        if (b.GMODE or b.gameMode) == gmode then
+                            local wn = b.WORLD or b.world
+                            if wn and not seen[wn] then seen[wn] = true; table.insert(ns, wn) end
+                        end
+                    end
+                    return ns
+                end)(),
                 onConfirm = function(newWorld)
                     newWorld = sanitize(newWorld)
                     local gmode    = old.GMODE or old.gameMode

@@ -5,7 +5,7 @@
 --
 -- For scrollable content use makeScrollText; use this for panels that must
 -- grow/shrink to fit their content.
----@diagnostic disable: undefined-global, undefined-doc-name, inject-field
+---@diagnostic disable: undefined-global, undefined-doc-name, inject-field, undefined-field, need-check-nil
 
 ManualSave = ManualSave or {}
 

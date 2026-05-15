@@ -1,5 +1,5 @@
 # ============================================================
-# ManualSave_Watcher.ps1 v4.0
+# ManualSave_Watcher.ps1 v1.3.2
 # External watcher for ManualSaveMod (Project Zomboid B42)
 # Screenshot logic inlined — ManualSave_Screenshot.ps1 no longer needed.
 # ============================================================
@@ -62,9 +62,10 @@ $SCREEN_REQ    = "$LuaDir\ManualSave_ScreenReq.txt"
 $SCREEN_DONE   = "$LuaDir\ManualSave_ScreenDone.txt"
 $SCREEN_LOG    = "$LuaDir\ManualSave_ScreenLog.txt"
 $THUMB_PENDING = "$LuaDir\ManualSave_ThumbPending.png"
-$LOCK_FILE     = "$LuaDir\ManualSave_Watcher.lock"
-$HEARTBEAT     = "$LuaDir\ManualSave_Heartbeat.txt"
-$HB            = 0
+$LOCK_FILE      = "$LuaDir\ManualSave_Watcher.lock"
+$HEARTBEAT      = "$LuaDir\ManualSave_Heartbeat.txt"
+$VANILLA_OWNED  = "$LuaDir\ManualSave_VanillaOwned.txt"
+$HB             = 0
 
 if (-not (Test-Path $LuaDir)) { New-Item -ItemType Directory -Path $LuaDir -Force | Out-Null }
 
@@ -145,12 +146,14 @@ foreach ($T in (Get-ChildItem "$SAVES\MSM_THUMB_*" -Directory -EA SilentlyContin
     Remove-Item -LiteralPath $T.FullName -Recurse -Force
 }
 
+Invoke-CrashRecovery
+
 Write-Host "[ManualSave_Watcher] Watching for signals... (press Ctrl+C to stop)"
 Write-Host ""
 
 # ── Helpers ───────────────────────────────────────────────────
 
-function Parse-Signal($path) {
+function Read-Signal($path) {
     $params = @{}
     foreach ($line in (Get-Content $path -EA SilentlyContinue)) {
         $kv = $line -split '=', 2
@@ -165,7 +168,7 @@ function Write-Done($status, $action, $extra = @{}) {
     $lines | Set-Content $DONE
 }
 
-function Rebuild-Index {
+function Update-Index {
     $entries = @()
     foreach ($G in (Get-ChildItem $BACKUPS -Directory -EA SilentlyContinue)) {
         foreach ($W in (Get-ChildItem $G.FullName -Directory -EA SilentlyContinue)) {
@@ -186,10 +189,120 @@ function Add-ToIndex($gmode, $world, $slot) {
     if ($existing -notcontains $entry) { Add-Content $INDEX $entry }
 }
 
+function Add-VanillaOwned($gmode, $world, $slot, $sessionId) {
+    $entry = "$gmode|$world|$slot|$sessionId"
+    $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
+    if ($owned -notcontains $entry) { Add-Content $VANILLA_OWNED $entry }
+}
+
+# $sessionId = $null  -> match any session for this gmode+slot
+function Remove-VanillaOwned($gmode, $slot, $sessionId = $null) {
+    $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
+    if (-not $owned) { return }
+    $gEsc = [regex]::Escape($gmode); $sEsc = [regex]::Escape($slot)
+    if ($sessionId) {
+        $idEsc = [regex]::Escape($sessionId)
+        ($owned | Where-Object { $_ -notmatch "^$gEsc\|[^|]*\|$sEsc\|$idEsc$" }) | Set-Content $VANILLA_OWNED
+    } else {
+        ($owned | Where-Object { $_ -notmatch "^$gEsc\|[^|]*\|$sEsc\|" }) | Set-Content $VANILLA_OWNED
+    }
+}
+
+# $sessionId = $null  -> match any session for this gmode+slot
+function Test-VanillaOwned($gmode, $slot, $sessionId = $null) {
+    $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
+    if (-not $owned) { return $false }
+    $gEsc = [regex]::Escape($gmode); $sEsc = [regex]::Escape($slot)
+    if ($sessionId) {
+        $idEsc = [regex]::Escape($sessionId)
+        return [bool]($owned | Where-Object { $_ -match "^$gEsc\|[^|]*\|$sEsc\|$idEsc$" })
+    }
+    return [bool]($owned | Where-Object { $_ -match "^$gEsc\|[^|]*\|$sEsc\|" })
+}
+
+function Get-VanillaOwnedEntries {
+    $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
+    if (-not $owned) { return @() }
+    $result = @()
+    foreach ($entry in $owned) {
+        $parts = $entry -split '\|', 4
+        if ($parts.Count -eq 4) {
+            $result += [PSCustomObject]@{ gmode=$parts[0]; world=$parts[1]; slot=$parts[2]; sessionId=$parts[3] }
+        }
+    }
+    return $result
+}
+
+function Invoke-CrashRecovery {
+    $entries = Get-VanillaOwnedEntries
+    if ($entries.Count -eq 0) { return }
+    $CRASH_RECOVERY = "$LuaDir\ManualSave_CrashRecovery.txt"
+    $recovered = @()
+    foreach ($e in $entries) {
+        $vanillaPath = "$SAVES\$($e.gmode)\$($e.slot)"
+        if (-not (Test-Path -LiteralPath $vanillaPath)) {
+            Remove-VanillaOwned $e.gmode $e.slot $e.sessionId
+            continue
+        }
+        $ts           = Get-Date -Format 'yyyyMMdd_HHmm'
+        $recoverySlot = "$($e.slot)_crash_$ts"
+        $dst          = "$BACKUPS\$($e.gmode)\$($e.world)\$recoverySlot"
+        New-Item -ItemType Directory -Path $dst -Force | Out-Null
+        & robocopy $vanillaPath $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
+        if ($LASTEXITCODE -lt 8) {
+            $sz   = Get-FolderSizeMB $dst
+            $safeG = $e.gmode -replace ' ','_'
+            $safeW = $e.world -replace ' ','_'
+            $safeR = $recoverySlot -replace ' ','_'
+            $meta = "$LuaDir\ManualSaves_Meta_${safeG}_${safeW}_${safeR}.txt"
+            @(
+                "DATE=$(Get-Date -Format 'dd MMM yyyy HH:mm')",
+                "TYPE=CRASH_RECOVERY",
+                "GMODE=$($e.gmode)",
+                "WORLD=$($e.world)",
+                "SLOT=$recoverySlot",
+                "SIZE=$sz MB",
+                "SOURCE_SLOT=$($e.slot)"
+            ) | Set-Content -LiteralPath $meta
+            Add-ToIndex $e.gmode $e.world $recoverySlot
+            if (Test-Path -LiteralPath "$vanillaPath\thumb.png") {
+                if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
+                Copy-Item -LiteralPath "$vanillaPath\thumb.png" -Destination "$THUMBS\$recoverySlot.png" -Force
+            }
+            Write-Host "[ManualSave_Watcher] Crash recovery: $($e.slot) -> $recoverySlot"
+            $recovered += $recoverySlot
+        } else {
+            Write-Host "[ManualSave_Watcher] Crash recovery: robocopy failed for $($e.slot), code $LASTEXITCODE"
+        }
+        Remove-Item -LiteralPath $vanillaPath -Recurse -Force
+        Remove-VanillaOwned $e.gmode $e.slot $e.sessionId
+    }
+    if ($recovered.Count -gt 0) {
+        $recovered | Set-Content $CRASH_RECOVERY
+        Write-Host "[ManualSave_Watcher] $($recovered.Count) crash recovery save(s) ready."
+    }
+}
+
 function Get-FolderSizeMB($path) {
     $s = (Get-ChildItem -LiteralPath $path -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum
     if ($s) { return ([math]::Round($s / 1MB, 1)).ToString([System.Globalization.CultureInfo]::InvariantCulture) }
     return "0"
+}
+
+function Save-ThumbCropped($srcPath, $dstPath, $size = 250) {
+    $src   = [System.Drawing.Image]::FromFile($srcPath)
+    $cropX = [int](($src.Width  - $size) / 2)
+    $cropY = [int](($src.Height - $size) / 2)
+    $thumb = New-Object System.Drawing.Bitmap($size, $size)
+    $tg    = [System.Drawing.Graphics]::FromImage($thumb)
+    $tg.DrawImage($src,
+        (New-Object System.Drawing.Rectangle(0, 0, $size, $size)),
+        (New-Object System.Drawing.Rectangle($cropX, $cropY, $size, $size)),
+        [System.Drawing.GraphicsUnit]::Pixel)
+    $tg.Dispose()
+    $src.Dispose()
+    $thumb.Save($dstPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $thumb.Dispose()
 }
 
 function New-Placeholder($dst) {
@@ -291,7 +404,9 @@ function Invoke-Screenshot($outputPath) {
 while ($true) {
     Start-Sleep -Milliseconds 100
     $HB++
-    Set-Content $HEARTBEAT $HB
+    $HB_TMP = "$HEARTBEAT.tmp"
+    [System.IO.File]::WriteAllText($HB_TMP, [string]$HB)
+    Move-Item $HB_TMP $HEARTBEAT -Force
 
     # Screenshot request (highest priority)
     if (Test-Path $SCREEN_REQ) {
@@ -311,7 +426,7 @@ while ($true) {
 
     if (-not (Test-Path $SIGNAL)) { continue }
 
-    $p = Parse-Signal $SIGNAL
+    $p = Read-Signal $SIGNAL
     Remove-Item $SIGNAL -Force
 
     $ACTION    = $p['ACTION']
@@ -364,6 +479,15 @@ while ($true) {
                 Write-Host "[ManualSave_Watcher] SIZE=$size MB, DATE=$date written."
             }
             Write-Done "OK" "SAVE" @{ SLOT = $SLOT }
+            if ($p['SESSION_CLOSE'] -eq '1') {
+                $sid = $p['SESSION_ID']
+                if ($sid -and (Test-VanillaOwned $GMODE $SLOT $sid)) {
+                    $vp = "$SAVES\$GMODE\$SLOT"
+                    if (Test-Path -LiteralPath $vp) { Remove-Item -LiteralPath $vp -Recurse -Force }
+                    Remove-VanillaOwned $GMODE $SLOT $sid
+                    Write-Host "[ManualSave_Watcher] SESSION_CLOSE: vanilla slot removed."
+                }
+            }
         }
         'LOAD' {
             $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
@@ -372,6 +496,9 @@ while ($true) {
             & robocopy $src $dst /MIR /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
             if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] ERROR: robocopy failed, code $LASTEXITCODE"; break }
             Write-Host "[ManualSave_Watcher] RESTORE complete: $dst"
+            $sessionId = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
+            Remove-VanillaOwned $GMODE $SLOT   # clear any stale entry for this slot
+            Add-VanillaOwned $GMODE $WORLD $SLOT $sessionId
             $safeSlot  = $SLOT -replace '[\\/ ]', '_'
             $flagsFile = "$LuaDir\ManualSaves_Flags_$safeSlot.txt"
             if (Test-Path -LiteralPath $flagsFile) {
@@ -390,14 +517,59 @@ while ($true) {
                 }
                 Remove-Item -LiteralPath $flagsFile -Force
             }
-            Write-Done "OK" "LOAD" @{ SLOT = $SLOT }
+            Write-Done "OK" "LOAD" @{ SLOT = $SLOT; SESSION_ID = $sessionId }
+        }
+        'SESSION_END' {
+            $sid = $p['SESSION_ID']
+            if ($sid -and (Test-VanillaOwned $GMODE $SLOT $sid)) {
+                $vp = "$SAVES\$GMODE\$SLOT"
+                if (Test-Path -LiteralPath $vp) { Remove-Item -LiteralPath $vp -Recurse -Force }
+                Remove-VanillaOwned $GMODE $SLOT $sid
+                Write-Host "[ManualSave_Watcher] SESSION_END: vanilla slot removed."
+            }
+            Write-Done "OK" "SESSION_END"
         }
         'DELETE' {
             $target = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
             if (Test-Path -LiteralPath "$THUMBS\$SLOT.png") { Remove-Item -LiteralPath "$THUMBS\$SLOT.png" -Force }
-            Rebuild-Index
+            $worldDir = "$BACKUPS\$GMODE\$WORLD"
+            if ((Test-Path -LiteralPath $worldDir) -and -not (Get-ChildItem -LiteralPath $worldDir)) {
+                Remove-Item -LiteralPath $worldDir -Force
+            }
+            $gmodeDir = "$BACKUPS\$GMODE"
+            if ((Test-Path -LiteralPath $gmodeDir) -and -not (Get-ChildItem -LiteralPath $gmodeDir)) {
+                Remove-Item -LiteralPath $gmodeDir -Force
+            }
+            if (Test-VanillaOwned $GMODE $SLOT) {
+                $vanillaSlot = "$SAVES\$GMODE\$SLOT"
+                if (Test-Path -LiteralPath $vanillaSlot) {
+                    Remove-Item -LiteralPath $vanillaSlot -Recurse -Force
+                    Write-Host "[ManualSave_Watcher] DELETE: vanilla save removed: $vanillaSlot"
+                }
+                Remove-VanillaOwned $GMODE $SLOT
+                $vanillaGmode = "$SAVES\$GMODE"
+                if ((Test-Path -LiteralPath $vanillaGmode) -and -not (Get-ChildItem -LiteralPath $vanillaGmode -EA SilentlyContinue)) {
+                    Remove-Item -LiteralPath $vanillaGmode -Force
+                }
+            }
+            Update-Index
             Write-Done "OK" "DELETE"
+        }
+        'EXPORT_VANILLA' {
+            $EXPORT_NAME = if ($p['EXPORT_NAME']) { $p['EXPORT_NAME'] } else { "${SLOT}_exported" }
+            $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
+            $dst = "$SAVES\$GMODE\$EXPORT_NAME"
+            if (-not (Test-Path $src)) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: source not found: $src"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
+            & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
+            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: robocopy failed, code $LASTEXITCODE"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
+            $thumbSrc = "$dst\thumb.png"
+            if (Test-Path -LiteralPath $thumbSrc) {
+                try { Save-ThumbCropped $thumbSrc $thumbSrc 250 }
+                catch { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: thumb resize failed: $_" }
+            }
+            Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: $SLOT -> $dst"
+            Write-Done "OK" "EXPORT_VANILLA"
         }
         'RENAME' {
             if (-not $OLD_SLOT -and $SLOT -match '^(.+)\|(.+)$') { $OLD_SLOT = $Matches[1]; $NEW_SLOT = $Matches[2] }
@@ -409,7 +581,7 @@ while ($true) {
             }
             Move-Item -LiteralPath $src -Destination $dst -Force
             if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Move-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
-            Rebuild-Index
+            Update-Index
             Write-Done "OK" "RENAME" @{ SLOT = $NEW_SLOT }
         }
         'CLONE' {
@@ -417,7 +589,7 @@ while ($true) {
             $src = "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT"
             $dst = "$BACKUPS\$GMODE\$WORLD\$NEW_SLOT"
             if (Test-Path -LiteralPath $src) { & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null }
-            Rebuild-Index
+            Update-Index
             if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Copy-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
             elseif (Test-Path -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
                 if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
@@ -430,7 +602,7 @@ while ($true) {
             if (-not $NEW_WORLD -and $SLOT -match '\|(.+)$') { $NEW_WORLD = $Matches[1] }
             $src = "$BACKUPS\$GMODE\$OLD_WORLD"
             if (Test-Path -LiteralPath $src) { Rename-Item -LiteralPath $src $NEW_WORLD }
-            Rebuild-Index
+            Update-Index
             Write-Done "OK" "RENAME_WORLD"
         }
         'CLONE_MODS' {
@@ -444,7 +616,7 @@ while ($true) {
             $modLines = ($MOD_LIST -split ',') | ForEach-Object { "mod=$($_.Trim())" } | Where-Object { $_ -ne "mod=" }
             $modLines | Set-Content -LiteralPath "$dst\mods.txt"
             Write-Host "[ManualSave_Watcher] CLONE_MODS: mods.txt written with $(($modLines | Measure-Object).Count) mods."
-            Rebuild-Index
+            Update-Index
             if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Copy-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
             elseif (Test-Path -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
                 if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
@@ -505,7 +677,7 @@ while ($true) {
                 }
             }
             Remove-Item -LiteralPath $importQueue -Force
-            Rebuild-Index
+            Update-Index
             Write-Done "OK" "IMPORT"
             Write-Host "[ManualSave_Watcher] IMPORT complete."
         }

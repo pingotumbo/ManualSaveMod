@@ -88,13 +88,16 @@ end
 -- load of a different world never picks up a stale session).
 ManualSave.SaveManager._sessionWorld = nil
 ManualSave.SaveManager._sessionGmode = nil
+ManualSave.SaveManager._sessionSlot  = nil
+ManualSave.SaveManager._sessionId    = nil
 
-local function writeSession(slot, world, gmode)
+local function writeSession(slot, world, gmode, sid)
     local w = getFileWriter(SESSION_FILE, true, false)
     if not w then return end
     w:write("SLOT="  .. slot  .. "\r\n")
     w:write("WORLD=" .. world .. "\r\n")
     w:write("GMODE=" .. gmode .. "\r\n")
+    if sid then w:write("SID=" .. sid .. "\r\n") end
     w:close()
 end
 
@@ -111,7 +114,7 @@ local function readSession()
     end
     r:close()
     if not data.SLOT then return nil end
-    return { slot=data.SLOT, world=data.WORLD, gmode=data.GMODE }
+    return { slot=data.SLOT, world=data.WORLD, gmode=data.GMODE, sessionId=data.SID }
 end
 
 local function restoreSessionIfNeeded(info)
@@ -120,12 +123,32 @@ local function restoreSessionIfNeeded(info)
     if s and s.slot == info.saveName then
         ManualSave.SaveManager._sessionWorld = s.world
         ManualSave.SaveManager._sessionGmode = s.gmode
+        ManualSave.SaveManager._sessionSlot  = s.slot
+        ManualSave.SaveManager._sessionId    = s.sessionId
     end
 end
 
+-- True for the first OnMainMenuEnter in each Lua VM lifetime.
+-- A genuine game→menu exit reloads the Lua VM (all module code re-runs → reset to true).
+-- A continueLatestSaveAux load transition fires OnMainMenuEnter WITHOUT reloading the VM,
+-- so the flag is already false and the cleanup block is skipped.
+local _firstMenuEnter = true
+
 Events.OnMainMenuEnter.Add(function()
+    if _firstMenuEnter then
+        _firstMenuEnter = false
+        local s = readSession()
+        if s and s.sessionId then
+            ManualSave.SignalBus.send("SESSION_END",
+                { GMODE=s.gmode, SLOT=s.slot, SESSION_ID=s.sessionId })
+            local w = getFileWriter(SESSION_FILE, true, false)
+            if w then w:close() end
+        end
+    end
     ManualSave.SaveManager._sessionWorld = nil
     ManualSave.SaveManager._sessionGmode = nil
+    ManualSave.SaveManager._sessionSlot  = nil
+    ManualSave.SaveManager._sessionId    = nil
 end)
 
 local function resolveWorld(info)
@@ -207,6 +230,10 @@ function ManualSave.SaveManager.fullSave(slotName, reenter)
             clearScreenshotDone()
             local params = { GMODE=gmode, WORLD=world, SLOT=slotName }
             if liveWorld ~= world then params.LIVE_WORLD = liveWorld end
+            if not reenter and ManualSave.SaveManager._sessionId then
+                params.SESSION_CLOSE = "1"
+                params.SESSION_ID    = ManualSave.SaveManager._sessionId
+            end
             ManualSave.SignalBus.send("SAVE", params)
             local ms = MainScreen.instance
             if ms and ms:isVisible() then
@@ -265,11 +292,13 @@ function ManualSave.SaveManager.load(gmode, world, slot, onDone)
     ManualSave.SignalBus.send(
         "LOAD",
         { GMODE=gmode, WORLD=world, SLOT=slot },
-        function(status, _)
+        function(status, result)
             if status == "OK" then
                 ManualSave.SaveManager._sessionWorld = world
                 ManualSave.SaveManager._sessionGmode = gmode
-                writeSession(slot, world, gmode)
+                ManualSave.SaveManager._sessionSlot  = slot
+                ManualSave.SaveManager._sessionId    = result and result.SESSION_ID
+                writeSession(slot, world, gmode, result and result.SESSION_ID)
 
                 local ok, liveWorld = pcall(function()
                     return getWorld() and getWorld():getWorld()

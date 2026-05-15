@@ -1,7 +1,7 @@
 -- UI/Screens/EditModsScreen.lua
 -- Floating panel: browse and edit the mod list for a cloned save.
 -- Shows all installed mods; save mods start checked. Clone disabled when unchanged.
----@diagnostic disable: undefined-global, undefined-doc-name, inject-field, unused-local
+---@diagnostic disable: undefined-global, undefined-doc-name, inject-field, unused-local, undefined-field
 
 ManualSave = ManualSave or {}
 
@@ -250,6 +250,20 @@ function ManualSave.openEditModsScreen(opts)
         end
     end
 
+    -- ── Error line helper ──────────────────────────────────────────────────────
+    local function makeErrLine(parent, x, y, w, h)
+        local txt = ""
+        ManualSave.makeLabel(parent, {
+            x=x, y=y, w=w, h=h,
+            getText = function() return txt end,
+            r = 0.90, g = 0.25, b = 0.22, a = 1,
+        })
+        return {
+            show = function(msg) txt = msg or "" end,
+            hide = function()    txt = ""         end,
+        }
+    end
+
     -- ── Floating panel ─────────────────────────────────────────────────────────
     local d
     d = ManualSave.makeFloatingPanel({
@@ -262,7 +276,8 @@ function ManualSave.openEditModsScreen(opts)
     local titleH = d.titleH
 
     -- ── Layout ─────────────────────────────────────────────────────────────────
-    local footerH   = PAD + FHS + GAP + BUTH + GAP + BUTH + PAD
+    local errLH     = FHS + 2
+    local footerH   = PAD + FHS + GAP + BUTH + GAP + errLH + GAP + BUTH + PAD
     local headerH   = titleH + PAD + FHS + GAP * 2
     local searchY   = headerH + GAP
     local ctrlY     = searchY + BUTH + GAP   -- sort + category + quick-actions row
@@ -270,12 +285,14 @@ function ManualSave.openEditModsScreen(opts)
     local listH     = H - listY - footerH
     local nameAreaY = H - footerH + PAD
     local nameTI_Y  = nameAreaY + FHS + GAP
-    local btnY      = nameTI_Y  + BUTH + GAP
+    local errLY     = nameTI_Y  + BUTH + GAP
+    local btnY      = errLY     + errLH + GAP
 
     -- ── Shared state ───────────────────────────────────────────────────────────
     local activeTag       = "all"
     local lastSearch      = ""
     local filteredMods    = {}
+    local errLine         -- forward ref
     local scrollList      -- forward ref
     local createBtnHandle -- forward ref
     local sortBtnHandle   -- forward ref
@@ -402,7 +419,24 @@ function ManualSave.openEditModsScreen(opts)
         x = PAD, y = nameTI_Y, w = W - PAD * 2, h = BUTH,
         placeholder = getText("UI_MSM_EditMods_NameLabel"),
         value       = defaultName,
+        onChange = function(text)
+            if not errLine then return end
+            local name = ManualSave.sanitize(text)
+            if name == "" then errLine.hide(); return end
+            local st2 = ManualSave.LoadScreen and ManualSave.LoadScreen._state
+            if not (st2 and st2.saves) then errLine.hide(); return end
+            local gmode = save.GMODE or save.gameMode
+            local world = save.WORLD or save.world
+            for _, b in ipairs(st2.saves) do
+                if b.slot == name and (b.GMODE or b.gameMode) == gmode and (b.WORLD or b.world) == world then
+                    errLine.show(getText("UI_MSM_ErrNameExists")); return
+                end
+            end
+            errLine.hide()
+        end,
     })
+
+    errLine = makeErrLine(p, PAD, errLY, W - PAD * 2, errLH)
 
     local cancelW = ManualSave.textBtnW(getText("UI_MSM_Common_BtnCancel"), 70)
     ManualSave.makeButton(p, {
@@ -428,6 +462,18 @@ function ManualSave.openEditModsScreen(opts)
             if not isDirty() then return end
             local newName = ManualSave.sanitize(nameTI.getValue())
             if newName == "" or newName == (save.slot or "") then return end
+            local st2 = ManualSave.LoadScreen and ManualSave.LoadScreen._state
+            if st2 and st2.saves then
+                local gmode = save.GMODE or save.gameMode
+                local world = save.WORLD or save.world
+                for _, b in ipairs(st2.saves) do
+                    if b.slot == newName and (b.GMODE or b.gameMode) == gmode and (b.WORLD or b.world) == world then
+                        if errLine then errLine.show(getText("UI_MSM_ErrNameExists")) end
+                        return
+                    end
+                end
+            end
+            if errLine then errLine.hide() end
 
             local finalIds   = {}
             local finalNames = {}

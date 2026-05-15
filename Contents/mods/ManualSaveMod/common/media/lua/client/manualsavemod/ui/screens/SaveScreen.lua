@@ -118,10 +118,16 @@ function ManualSave.openSaveScreen()
                 ManualSave.closeSaveScreen()
                 ManualSave.SaveManager.quickSave(name)
             else
-                ManualSave.closeSaveScreen()
+                ManualSave.closeSaveScreen(true)
                 ManualSave.openFullSaveDialog({
                     onExit   = function() ManualSave.SaveManager.fullSave(name, false) end,
                     onReturn = function() ManualSave.SaveManager.fullSave(name, true)  end,
+                    onCancel = function()
+                        if getPlayer() then
+                            setGameSpeed(1)
+                            setShowPausedMessage(true)
+                        end
+                    end,
                 })
             end
         end,
@@ -174,14 +180,15 @@ function ManualSave.openSaveScreen()
     d.open()
 end
 
--- Closes the save screen if open and resumes the game.
-function ManualSave.closeSaveScreen()
+-- Closes the save screen. Pass keepPaused=true to leave the game paused
+-- (used when immediately opening the full save dialog afterwards).
+function ManualSave.closeSaveScreen(keepPaused)
     if not _screen then return end
     ManualSave.UI.clearGroup("bat_required")
     local d = _screen
     _screen = nil
     d.close()
-    if getPlayer() then
+    if not keepPaused and getPlayer() then
         setGameSpeed(1)
         setShowPausedMessage(true)
     end

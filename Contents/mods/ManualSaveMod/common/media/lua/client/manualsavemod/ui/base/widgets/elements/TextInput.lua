@@ -1,7 +1,7 @@
 -- UI/Base/Elements/TextInput.lua
 -- Single-line text input with optional search icon and placeholder text.
 -- Adds the input to parent automatically.
----@diagnostic disable: undefined-global, undefined-doc-name
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field
 
 ManualSave = ManualSave or {}
 

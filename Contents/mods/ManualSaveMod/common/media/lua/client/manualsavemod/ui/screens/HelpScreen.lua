@@ -310,6 +310,25 @@ local function more_lines()
     }
 end
 
+local function exportvanilla_lines()
+    return {
+        { getText("UI_MSM_Help_ExportVanilla_01"), "header"    },
+        { getText("UI_MSM_Help_ExportVanilla_02"), "body"      },
+        { "",                                                  },
+        { getText("UI_MSM_Help_ExportVanilla_03"), "header"    },
+        { getText("UI_MSM_Help_ExportVanilla_04"), "body"      },
+        { "",                                                  },
+        { getText("UI_MSM_Help_ExportVanilla_05"), "header"    },
+        { getText("UI_MSM_Help_ExportVanilla_06"), "callout"   },
+        { "",                                                  },
+        { getText("UI_MSM_Help_ExportVanilla_07"), "header"    },
+        { getText("UI_MSM_Help_ExportVanilla_08"), "body"      },
+        { "",                                                  },
+        { getText("UI_MSM_Help_ExportVanilla_09"), "header"    },
+        { getText("UI_MSM_Help_ExportVanilla_10"), "body"      },
+    }
+end
+
 local function duplicate_lines()
     return {
         { getText("UI_MSM_Help_Duplicate_01"), "header"    },
@@ -618,8 +637,9 @@ local CATEGORIES = {
     }},
     { id="load",     label=getText("UI_MSM_Help_CatLoad"),     pages={
         { id="loadscreen",  label=getText("UI_MSM_Help_PageLoadscreen"), lines=loadscreen_lines  },
-        { id="more",        label=getText("UI_MSM_Help_PageMore"),       lines=more_lines        },
-        { id="duplicate",   label=getText("UI_MSM_Help_PageDuplicate"),  lines=duplicate_lines   },
+        { id="more",           label=getText("UI_MSM_Help_PageMore"),          lines=more_lines          },
+        { id="exportvanilla", label=getText("UI_MSM_Help_PageExportVanilla"), lines=exportvanilla_lines },
+        { id="duplicate",     label=getText("UI_MSM_Help_PageDuplicate"),    lines=duplicate_lines     },
         { id="rename",      label=getText("UI_MSM_Help_PageRename"),     lines=rename_lines      },
         { id="delete",      label=getText("UI_MSM_Help_PageDelete"),     lines=delete_lines      },
         { id="import",      label=getText("UI_MSM_Help_PageImport"),     lines=import_lines      },

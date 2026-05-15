@@ -130,24 +130,43 @@ end
 --
 -- opts:
 --   title       string
---   placeholder string?     hint text in the input field
---   value       string?     initial value
---   confirm     string?     confirm button label  (default "OK")
---   anchorX/Y   number?     anchor for tooltip-style positioning
---   x, y        number?     explicit position (overrides anchor)
---   helpSection string?     if set, shows a "?" button that opens HelpScreen to this section
+--   placeholder string?         hint text in the input field
+--   value       string?         initial value
+--   confirm     string?         confirm button label  (default "OK")
+--   anchorX/Y   number?         anchor for tooltip-style positioning
+--   x, y        number?         explicit position (overrides anchor)
+--   helpSection string?         if set, shows a "?" button that opens HelpScreen to this section
+--   names       string[]?       list of forbidden names; auto-generates validate from it
+--   validate    fun(string)?    custom validation; takes precedence over names
 --   onConfirm   fun(name:string)?
 --   onCancel    fun()?
 --
 function ManualSave.openNameInputDialog(opts)
     local TH = ManualSave.Theme
+    -- Auto-build validate from names list when no explicit validate is provided
+    if opts.names and not opts.validate then
+        local nameSet = {}
+        for _, n in ipairs(opts.names) do
+            local k = ManualSave.sanitize and ManualSave.sanitize(n) or n
+            if k ~= "" then nameSet[k] = true end
+        end
+        opts.validate = function(name)
+            local k = ManualSave.sanitize and ManualSave.sanitize(name) or name
+            if k ~= "" and nameSet[k] then return getText("UI_MSM_ErrNameExists") end
+        end
+    end
     local confirmLabel = opts.confirm or "OK"
     local cancelLabel  = getText("UI_MSM_Common_BtnCancel")
     local btnW = math.max(
         ManualSave.textBtnW(confirmLabel, 60),
         ManualSave.textBtnW(cancelLabel,  60))
-    local W = math.max(300, TH.PAD * 2 + btnW * 2 + TH.GAP)
-    local H = 110
+    local W        = math.max(300, TH.PAD * 2 + btnW * 2 + TH.GAP)
+    local inputY   = TH.PAD + TH.FONT_HGT_SMALL + TH.GAP
+    local errLineH = TH.FONT_HGT_SMALL + 2
+    local errY     = inputY + TH.BUTTON_HGT + TH.GAP
+    local btnY     = errY + errLineH + TH.GAP
+    local H        = btnY + TH.BUTTON_HGT + TH.PAD
+    local errMsg   = ""
 
     local d = ManualSave.makePopupPanel({
         w = W, h = H,
@@ -157,14 +176,16 @@ function ManualSave.openNameInputDialog(opts)
     })
     local p = d.panel
 
-    -- Title
-    p.prerender = function(self2)
-        ISPanel.prerender(self2)
-        self2:drawText(opts.title or "",
-            TH.PAD, TH.PAD, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Small)
-    end
+    ManualSave.makeLabel(p, {
+        x = TH.PAD, y = TH.PAD, w = W - TH.PAD * 2, h = TH.FONT_HGT_SMALL,
+        text = opts.title or "",
+    })
+    ManualSave.makeLabel(p, {
+        x = TH.PAD, y = errY, w = W - TH.PAD * 2, h = errLineH,
+        getText = function() return errMsg end,
+        r = 0.90, g = 0.25, b = 0.22, a = 1,
+    })
 
-    local inputY = TH.PAD + TH.FONT_HGT_SMALL + TH.GAP
     local ti = ManualSave.makeTextInput(p, {
         x = TH.PAD,
         y = inputY,
@@ -172,18 +193,26 @@ function ManualSave.openNameInputDialog(opts)
         h = TH.BUTTON_HGT,
         placeholder = opts.placeholder or "",
         value = opts.value or "",
+        onChange = opts.validate and function(text)
+            errMsg = opts.validate(text)
+        end or nil,
     })
-
-    local btnY = inputY + TH.BUTTON_HGT + TH.GAP
 
     ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD),
         y = btnY,
         w = btnW, h = TH.BUTTON_HGT,
-        label = opts.confirm or "OK",  -- "OK" kept as generic default; callers pass specific labels
+        label = opts.confirm or "OK",
         style = "primary",
         onClick = function()
             local name = ti.getValue()
+            if opts.validate then
+                local err = opts.validate(name)
+                if err then
+                    errMsg = err
+                    return
+                end
+            end
             d.close()
             if opts.onConfirm and name ~= "" then
                 pcall(opts.onConfirm, name)
@@ -257,7 +286,10 @@ function ManualSave.openFullSaveDialog(opts)
     ManualSave.makeButton(p, {
         x=TH.PAD, y=btnY, w=cancelW, h=btnH,
         label=cancelLabel, style="normal",
-        onClick=function() d.close() end,
+        onClick=function()
+            d.close()
+            if opts.onCancel then pcall(opts.onCancel) end
+        end,
     })
     ManualSave.makeButton(p, {
         x=exitX, y=btnY, w=exitW, h=btnH,
