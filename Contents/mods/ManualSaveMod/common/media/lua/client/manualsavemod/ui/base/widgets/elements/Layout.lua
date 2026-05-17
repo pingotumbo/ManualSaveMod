@@ -125,7 +125,7 @@ function ManualSave.makeFieldPair(parent, opts)
     })
     ManualSave.makeLabel(parent, {
         x=opts.x, y=opts.y + FHS + 1, w=opts.w, h=FHS + 1,
-        getText = opts.getValue or function() return opts.value or "--" end,
+        text = (opts.getValue and opts.getValue()) or opts.value or "--",
         r=TH.TEXT_R, g=TH.TEXT_G, b=TH.TEXT_B, a=1,
     })
     return lh

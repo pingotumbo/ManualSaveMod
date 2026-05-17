@@ -53,7 +53,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
 
     ManualSave.UI.clearGroup("bat_required")
     ManualSave.UI.setGroupCondition("bat_required", function()
-        return ManualSave.SignalBus.isBatAlive() ~= false
+        return ManualSave.SignalBus.isBatAlive() ~= false and not ManualSave._progressActive
     end)
 
     local p = d.panel
@@ -119,51 +119,52 @@ function ManualSave.openLoadScreen(fromMainMenu)
         end,
     })
 
-    -- "?" tutorial-hook button: left of warning, shown when BAT offline
-    local infoBtn = ManualSave.makeButton(p, {
+    -- "?" tutorial-hook button: shown only when watcher is offline (not during save progress)
+    ManualSave.LoadScreen._infoBtn = ManualSave.makeButton(p, {
         x=infoX, y=footerY, w=26, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Common_BtnHelp"), style="normal",
         onClick = function()
-            if ManualSave.openHelpScreen then ManualSave.openHelpScreen("watcher") end
+            if ManualSave.openHelpScreen then
+                local section = ManualSave._progressActive and "savebusy" or "watcher"
+                ManualSave.openHelpScreen(section)
+            end
         end,
     })
-    infoBtn.btn:setVisible(false)
-    ManualSave.UI.registerElement("bat_required",
-        { setEnabled = function(v) infoBtn.btn:setVisible(v) end }, true)
+    ManualSave.LoadScreen._infoBtn.btn:setVisible(false)
 
-    -- Warning label (shown when BAT offline)
+    -- Warning label: text and visibility set by updateWarnArea()
     local warnX     = infoX + 26 + TH.GAP
-    local warnRight = moreX  -- left edge of More button
+    local warnRight = moreX
     local warnH     = TH.BUTTON_HGT
-    local warnPanel = ManualSave.makeLabel(p, {
+    ManualSave.LoadScreen._warnLabel = ManualSave.makeLabel(p, {
         x=warnX, y=footerY, w=warnRight - warnX - TH.GAP, h=warnH,
-        text  = getText("UI_MSM_Common_WarnOffline"),
         textY = math.floor((warnH - TH.FONT_HGT_SMALL) / 2),
         r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
     })
-    warnPanel:setVisible(false)
-    ManualSave.UI.registerElement("bat_required",
-        { setEnabled = function(v) warnPanel:setVisible(v) end }, true)
+    ManualSave.LoadScreen._warnLabel.setVisible(false)
 
-    -- Combined-condition refresh: re-evaluates More/Load/_actBtns using bat status + selection state
+    -- Unified handler: button states and warn area, all from one call
     ManualSave.UI.registerElement("bat_required", { setEnabled = function(v)
         local ls  = ManualSave.LoadScreen
         local st  = ls and ls._state
         local sel = st and st.selected
         if ls._btnLoad then ls._btnLoad.setEnabled(v and sel ~= nil and not sel.CORRUPTED) end
-        if ls._btnMore then ls._btnMore.setEnabled(sel ~= nil) end
+        if ls._btnMore then ls._btnMore.setEnabled(v and sel ~= nil) end
         if ls._actBtns then
             ls._actBtns.rename.setEnabled(v and sel ~= nil)
             ls._actBtns.clone.setEnabled(v and sel ~= nil)
             ls._actBtns.delete.setEnabled(v and sel ~= nil)
         end
+        ManualSave.LoadScreen.updateWarnArea()
     end })
 
     d.onClose(function()
         if not ManualSave.LoadScreen._screen then return end
         local wasInGame = getPlayer() ~= nil
-        ManualSave.LoadScreen._screen = nil
-        ManualSave.LoadScreen._state  = nil
+        ManualSave.LoadScreen._screen    = nil
+        ManualSave.LoadScreen._state     = nil
+        ManualSave.LoadScreen._infoBtn   = nil
+        ManualSave.LoadScreen._warnLabel = nil
         ManualSave.UI.clearGroup("bat_required")
         ManualSave.closeMoreScreen()
         if ManualSave.closeImportScreen then ManualSave.closeImportScreen() end
@@ -176,6 +177,20 @@ function ManualSave.openLoadScreen(fromMainMenu)
     ManualSave.UI.evalConditions()
     if getPlayer() then setGameSpeed(0); setShowPausedMessage(false) end
     d.open()
+end
+
+-- Updates the warning label and help-button visibility based on current state.
+-- Called by the bat_required group handler whenever conditions change.
+function ManualSave.LoadScreen.updateWarnArea()
+    local ls = ManualSave.LoadScreen
+    if not ls._screen or not ls._warnLabel then return end
+    local offline = ManualSave.SignalBus.isBatAlive() == false
+    local busy    = ManualSave._progressActive == true
+    ls._warnLabel.setVisible(offline or busy)
+    ls._infoBtn.btn:setVisible(offline or busy)
+    ls._warnLabel.setText(busy
+        and getText("UI_MSM_Common_WarnBusy")
+        or  getText("UI_MSM_Common_WarnOffline"))
 end
 
 -- Shows a confirmation dialog before loading. Closes LoadScreen on confirm.
