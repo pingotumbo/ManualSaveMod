@@ -104,7 +104,7 @@ function ManualSave.SignalBus.send(action, params, onDone, timeout)
     -- While a full save is committing, only the SAVE signal itself is allowed through.
     -- Anything else (DELETE, RENAME, CLONE, …) would overwrite the SAVE in the shared
     -- signal file before the Watcher reads it, losing the backup.
-    if action ~= "SAVE" and ManualSave.SaveManager and ManualSave.SaveManager._quitting then
+    if action ~= "SAVE" and ManualSave.SaveLock and ManualSave.SaveLock.isLocked() then
         print("[ManualSaveMod] SignalBus: IGNORED " .. action .. " (full save in progress)")
         if onDone then pcall(onDone, "ERROR", { STATUS="ERROR", ERROR="quitting", ACTION=action }) end
         return

@@ -61,6 +61,7 @@ $THUMBS        = "$ZomboidRoot\Saves\ManualSave_Thumbs"
 $SCREEN_REQ    = "$LuaDir\ManualSave_ScreenReq.txt"
 $SCREEN_DONE   = "$LuaDir\ManualSave_ScreenDone.txt"
 $SCREEN_LOG    = "$LuaDir\ManualSave_ScreenLog.txt"
+$PROGRESS      = "$LuaDir\ManualSave_Progress.txt"
 $THUMB_PENDING = "$LuaDir\ManualSave_ThumbPending.png"
 $LOCK_FILE      = "$LuaDir\ManualSave_Watcher.lock"
 $HEARTBEAT      = "$LuaDir\ManualSave_Heartbeat.txt"
@@ -471,8 +472,27 @@ while ($true) {
                 Start-Sleep -Seconds 1
             }
             Write-Host "[ManualSave_Watcher] Copying: $src -> $dst"
-            & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 16) { Write-Host "[ManualSave_Watcher] ERROR: robocopy fatal, code $LASTEXITCODE"; break }
+            $total = 0
+            try { $total = (Get-ChildItem -LiteralPath $src -Recurse -File -EA Stop).Count } catch {}
+            "COPIED=0`r`nTOTAL=$total" | Set-Content $PROGRESS -Encoding UTF8
+
+            $rcLog  = [IO.Path]::GetTempFileName()
+            $rcProc = Start-Process robocopy `
+                -ArgumentList "`"$src`" `"$dst`" /E /COPY:DAT /R:2 /W:2 /NDL /NJH /NJS" `
+                -RedirectStandardOutput $rcLog -NoNewWindow -PassThru
+            $copied = 0
+            while (-not $rcProc.HasExited) {
+                Start-Sleep -Milliseconds 300
+                $lines = Get-Content $rcLog -EA SilentlyContinue
+                if ($lines) {
+                    $n = ($lines | Where-Object { $_ -match '\S' }).Count
+                    if ($n -ne $copied) { $copied = $n; "COPIED=$copied`r`nTOTAL=$total" | Set-Content $PROGRESS -Encoding UTF8 }
+                }
+            }
+            $rcExit = $rcProc.ExitCode
+            Remove-Item $rcLog      -Force -EA SilentlyContinue
+            Remove-Item $PROGRESS   -Force -EA SilentlyContinue
+            if ($rcExit -ge 16) { Write-Host "[ManualSave_Watcher] ERROR: robocopy fatal, code $rcExit"; break }
             Write-Host "[ManualSave_Watcher] SAVE complete: $dst"
             Add-ToIndex $GMODE $WORLD $SLOT
             if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }

@@ -562,5 +562,9 @@
 "UI_MSM_Help_ExportVanilla_07": "縮圖",
 "UI_MSM_Help_ExportVanilla_08": "縮圖從原始截圖中心裁切為250x250\n與PZ原生縮圖尺寸一致",
 "UI_MSM_Help_ExportVanilla_09": "使用情境",
-"UI_MSM_Help_ExportVanilla_10": "與沒有本模組的玩家分享存檔\n將原版副本作為永久存檔點保留\n完全遷移脫離本模組"
+"UI_MSM_Help_ExportVanilla_10": "與沒有本模組的玩家分享存檔\n將原版副本作為永久存檔點保留\n完全遷移脫離本模組",
+
+"UI_MSM_Progress_Title":     "儲存中...",
+"UI_MSM_Progress_Preparing": "準備中...",
+"UI_MSM_Progress_Counter":   "%1 / %2 個檔案"
 }

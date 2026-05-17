@@ -562,5 +562,9 @@
   "UI_MSM_Help_EditMods_17": "AFTER THE CLONE",
   "UI_MSM_Help_EditMods_18": "The clone lists only the checked mods in its mods.txt.\nMod content already in the world (items, structures) is not changed.",
   "UI_MSM_Help_EditMods_19": "The original slot stays untouched. Load it to return to the full mod state.",
-  "UI_MSM_Help_EditMods_20": "Items, recipes, vehicles, or traits from removed mods will appear broken on first load of the clone."
+  "UI_MSM_Help_EditMods_20": "Items, recipes, vehicles, or traits from removed mods will appear broken on first load of the clone.",
+
+  "UI_MSM_Progress_Title":     "Saving...",
+  "UI_MSM_Progress_Preparing": "Preparing...",
+  "UI_MSM_Progress_Counter":   "%1 / %2 files"
 }

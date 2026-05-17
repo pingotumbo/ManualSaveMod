@@ -562,5 +562,9 @@
   "UI_MSM_Help_ExportVanilla_07": "MINIATURE",
   "UI_MSM_Help_ExportVanilla_08": "La miniature est recadrée à 250x250 depuis le centre de la\ncapture d'écran originale, correspondant à la taille native de PZ.",
   "UI_MSM_Help_ExportVanilla_09": "QUAND L'UTILISER",
-  "UI_MSM_Help_ExportVanilla_10": "Partager une sauvegarde avec quelqu'un qui n'a pas le mod.\nConserver une copie vanilla comme point de contrôle permanent.\nMigrer complètement hors du mod."
+  "UI_MSM_Help_ExportVanilla_10": "Partager une sauvegarde avec quelqu'un qui n'a pas le mod.\nConserver une copie vanilla comme point de contrôle permanent.\nMigrer complètement hors du mod.",
+
+  "UI_MSM_Progress_Title":     "Sauvegarde...",
+  "UI_MSM_Progress_Preparing": "Preparation...",
+  "UI_MSM_Progress_Counter":   "%1 / %2 fichiers"
 }

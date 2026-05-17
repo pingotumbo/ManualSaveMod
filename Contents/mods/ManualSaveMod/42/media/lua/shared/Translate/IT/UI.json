@@ -562,5 +562,9 @@
   "UI_MSM_Help_EditMods_17": "DOPO IL CLONE",
   "UI_MSM_Help_EditMods_18": "Il clone elenca solo le mod selezionate nel suo mods.txt.\nI contenuti mod gia' presenti nel mondo (oggetti, strutture) non vengono modificati.",
   "UI_MSM_Help_EditMods_19": "Lo slot originale rimane invariato. Caricalo per tornare allo stato completo con tutte le mod.",
-  "UI_MSM_Help_EditMods_20": "Oggetti, ricette, veicoli o tratti delle mod rimosse appariranno come rotti al primo caricamento del clone."
+  "UI_MSM_Help_EditMods_20": "Oggetti, ricette, veicoli o tratti delle mod rimosse appariranno come rotti al primo caricamento del clone.",
+
+  "UI_MSM_Progress_Title":     "Salvataggio...",
+  "UI_MSM_Progress_Preparing": "Preparazione...",
+  "UI_MSM_Progress_Counter":   "%1 / %2 file"
 }
