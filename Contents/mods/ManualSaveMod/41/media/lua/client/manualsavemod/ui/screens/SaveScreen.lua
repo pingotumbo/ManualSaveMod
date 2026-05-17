@@ -4,7 +4,7 @@
 --
 -- Full Save: exits to main menu for a complete save (optionally re-enters).
 -- Quick Save: instant copy without exiting the game.
----@diagnostic disable: undefined-global, undefined-doc-name, inject-field
+---@diagnostic disable: undefined-global, undefined-doc-name, inject-field, undefined-field
 
 ManualSave = ManualSave or {}
 
@@ -98,6 +98,17 @@ function ManualSave.openSaveScreen()
         onClick = function() ManualSave.closeSaveScreen() end,
     })
 
+    -- Status message (validation error or bat-offline warning)
+    local statusLabel = ManualSave.makeLabel(p, {
+        x=TH.PAD, y=btnY - TH.FONT_HGT_SMALL - 4, w=W - TH.PAD*2, h=TH.FONT_HGT_SMALL,
+        r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
+    })
+
+    local _batWarn = false
+    local function updateStatusLabel()
+        statusLabel.setText(statusMsg or (_batWarn and getText("UI_MSM_Save_WarnOffline")) or "")
+    end
+
     -- Save button — label stays in sync with isQuick via update
     ManualSave.makeButton(p, {
         x = W - TH.PAD - saveW,
@@ -110,6 +121,7 @@ function ManualSave.openSaveScreen()
             local name = ManualSave.sanitize(nameInput.getValue())
             if name == "" then
                 statusMsg = getText("UI_MSM_Save_ErrNoName")
+                updateStatusLabel()
                 return
             end
             statusMsg = nil
@@ -134,9 +146,8 @@ function ManualSave.openSaveScreen()
     })
 
     -- Warning handle: shown when bat_required group condition is false (BAT offline)
-    local _batWarn = false
     ManualSave.UI.registerElement("bat_required",
-        { setEnabled = function(v) _batWarn = v end }, true)
+        { setEnabled = function(v) _batWarn = v; updateStatusLabel() end }, true)
 
     -- Info button: Quick Save explanation
     local infoSz = 20
@@ -160,15 +171,6 @@ function ManualSave.openSaveScreen()
             { "",                                               },
             { getText("UI_MSM_Save_InfoUseFullSave"),  "normal" },
         },
-    })
-
-    -- Status message (validation error or bat-offline warning)
-    ManualSave.makeLabel(p, {
-        x=TH.PAD, y=btnY - TH.FONT_HGT_SMALL - 4, w=W - TH.PAD*2, h=TH.FONT_HGT_SMALL,
-        getText = function()
-            return statusMsg or (_batWarn and getText("UI_MSM_Save_WarnOffline")) or ""
-        end,
-        r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
     })
 
     ManualSave.UI.evalConditions()

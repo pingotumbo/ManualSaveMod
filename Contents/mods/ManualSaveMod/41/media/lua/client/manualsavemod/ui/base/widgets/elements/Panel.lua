@@ -125,27 +125,42 @@ end
 ---@param parent ISPanel?
 ---@param opts table
 ---@return ISPanel
+-- Returns { panel, setText, setVisible, setColor }.
+-- setText / setColor drive the display for explicit updates.
+-- opts.getText / opts.getR/G/B/A callbacks are also supported for per-frame dynamic labels.
 function ManualSave.makeLabel(parent, opts)
     local TH   = ManualSave.Theme
     local font = opts.font or UIFont.Small
     local h    = opts.h or (TH.FONT_HGT_SMALL + 2)
     local txY  = opts.textY or 0
-    if opts.vCenter then
-        txY = math.floor((h - TH.FONT_HGT_SMALL) / 2)
-    end
-    return ManualSave.makePanel(parent, {
+    if opts.vCenter then txY = math.floor((h - TH.FONT_HGT_SMALL) / 2) end
+
+    local _text = opts.text or ""
+    local _r    = opts.r or TH.TEXT_R
+    local _g    = opts.g or TH.TEXT_G
+    local _b    = opts.b or TH.TEXT_B
+    local _a    = opts.a or 1
+
+    local panel = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y or 0, w=opts.w, h=h,
         bg=opts.bg or { r=0, g=0, b=0, a=0 }, border=false,
         prerender = function(lp)
-            local txt = opts.getText and opts.getText() or (opts.text or "")
+            local txt = opts.getText and opts.getText() or _text
             if not txt or txt == "" then return end
-            local r = opts.getR and opts.getR() or (opts.r or TH.TEXT_R)
-            local g = opts.getG and opts.getG() or (opts.g or TH.TEXT_G)
-            local b = opts.getB and opts.getB() or (opts.b or TH.TEXT_B)
-            local a = opts.getA and opts.getA() or (opts.a or 1)
+            local r = opts.getR and opts.getR() or _r
+            local g = opts.getG and opts.getG() or _g
+            local b = opts.getB and opts.getB() or _b
+            local a = opts.getA and opts.getA() or _a
             lp:drawText(txt, opts.textX or 0, txY, r, g, b, a, font)
         end,
     })
+
+    return {
+        panel      = panel,
+        setText    = function(txt)          _text = txt or ""          end,
+        setVisible = function(v)            panel:setVisible(v)        end,
+        setColor   = function(r, g, b, a)   _r,_g,_b,_a = r,g,b,a    end,
+    }
 end
 
 -- Creates a panel with a top accent bar drawn internally via prerender.

@@ -55,12 +55,14 @@ function ManualSave.makeModalPanel(opts)
     local function doClose()
         if closing then return end
         closing = true
+        ManualSave._uiTopLock = math.max(0, (ManualSave._uiTopLock or 0) - 1)
         overlay:setVisible(false)
         overlay:removeFromUIManager()
         for _, fn in ipairs(callbacks) do pcall(fn) end
     end
 
     function obj.open()
+        ManualSave._uiTopLock = (ManualSave._uiTopLock or 0) + 1
         overlay:addToUIManager()
         overlay:setVisible(true)
         overlay:bringToTop()

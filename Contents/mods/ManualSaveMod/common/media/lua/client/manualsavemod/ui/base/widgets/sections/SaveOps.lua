@@ -12,24 +12,14 @@ local sanitize = ManualSave.sanitize
 -- Returns: height consumed
 function ManualSave.makeSaveActions(parent, opts)
     local TH       = ManualSave.Theme
-    local FHS      = TH.FONT_HGT_SMALL
     local btnH     = TH.BUTTON_HGT
     local w        = opts.w
     local st       = opts.st
     local halfBtnW = math.floor((w - TH.GAP) / 2)
     local ry       = opts.y
 
-    local function sectionLbl(y, text)
-        ManualSave.makeLabel(parent, {
-            x=0, y=y, w=w, h=FHS + 4,
-            text=text, textY=2,
-            r=TH.DIM_R, g=TH.DIM_G, b=TH.DIM_B, a=0.8,
-        })
-        return FHS + 4
-    end
-
     -- SAVE ACTIONS
-    ry = ry + sectionLbl(ry, getText("UI_MSM_Ops_HeaderSaveActions"))
+    ry = ry + ManualSave.makeSectionSubHeader(parent, { x=0, y=ry, w=w, text=getText("UI_MSM_Ops_HeaderSaveActions") })
     ManualSave.makeButton(parent, {
         x=0, y=ry, w=halfBtnW, h=btnH,
         label=getText("UI_MSM_Ops_BtnExportVanilla"), style="normal",
@@ -132,7 +122,7 @@ function ManualSave.makeSaveActions(parent, opts)
     ry = ry + btnH + TH.GAP
 
     -- WORLD ACTIONS
-    ry = ry + sectionLbl(ry, getText("UI_MSM_Ops_HeaderWorldActions"))
+    ry = ry + ManualSave.makeSectionSubHeader(parent, { x=0, y=ry, w=w, text=getText("UI_MSM_Ops_HeaderWorldActions") })
     local infoSz  = 20
     local waInfoY = ry + math.floor((btnH - infoSz) / 2)
 

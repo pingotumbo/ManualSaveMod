@@ -437,6 +437,26 @@ local function editmods_lines()
     }
 end
 
+-- SAVE IN PROGRESS ────────────────────────────────────────────────────────────
+
+local function savebusy_lines()
+    return {
+        { getText("UI_MSM_Help_SaveBusy_01"), "header"    },
+        { getText("UI_MSM_Help_SaveBusy_02"), "body"      },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_03"), "body"      },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_04"), "header"    },
+        { getText("UI_MSM_Help_SaveBusy_05"), "callout_w" },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_06"), "header"    },
+        { getText("UI_MSM_Help_SaveBusy_07"), "check"     },
+        { getText("UI_MSM_Help_SaveBusy_08"), "check"     },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_09"), "body"      },
+    }
+end
+
 -- RECOVERY ─────────────────────────────────────────────────────────────────────
 
 local function recovery_lines()
@@ -634,6 +654,7 @@ local CATEGORIES = {
         { id="quicksave",   label=getText("UI_MSM_Help_PageQuicksave"),  lines=quicksave_lines   },
         { id="fullsave",    label=getText("UI_MSM_Help_PageFullsave"),   lines=fullsave_lines    },
         { id="thumbnail",   label=getText("UI_MSM_Help_PageThumbnail"),  lines=thumbnail_lines   },
+        { id="savebusy",    label=getText("UI_MSM_Help_PageSaveBusy"),   lines=savebusy_lines    },
     }},
     { id="load",     label=getText("UI_MSM_Help_CatLoad"),     pages={
         { id="loadscreen",  label=getText("UI_MSM_Help_PageLoadscreen"), lines=loadscreen_lines  },
@@ -714,7 +735,6 @@ function ManualSave.openHelpScreen(section)
     local d  = ManualSave.makeFloatingPanel({
         w=W, h=H, title=getText("UI_MSM_Help_Title"),
         subtitle = navSubtitle(),
-        noBorder = true,
         onClose  = function() ManualSave.closeHelpScreen() end,
         render   = function(self2)
             local TH2 = ManualSave.Theme
