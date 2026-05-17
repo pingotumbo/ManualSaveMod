@@ -234,6 +234,13 @@ function Get-VanillaOwnedEntries {
 }
 
 function Invoke-CrashRecovery {
+    # If a reenter flag is present the player did Save & Return — PZ will re-enter
+    # the vanilla slot on next load, so do NOT treat it as a crash.
+    $reenterFlag = "$LuaDir\ManualSave_ReenterFlag.txt"
+    if (Test-Path $reenterFlag) {
+        Write-Host "[ManualSave_Watcher] Reenter flag found, skipping crash recovery."
+        return
+    }
     $entries = Get-VanillaOwnedEntries
     if ($entries.Count -eq 0) { return }
     $CRASH_RECOVERY = "$LuaDir\ManualSave_CrashRecovery.txt"
@@ -306,10 +313,22 @@ function Save-ThumbCropped($srcPath, $dstPath, $size = 250) {
 }
 
 function New-Placeholder($dst) {
+    $placeholderDir = Join-Path $PSScriptRoot "placeholders"
+    $images = @(Get-ChildItem -LiteralPath $placeholderDir -EA SilentlyContinue | Where-Object { $_.Extension -iin @('.png','.jpg','.jpeg') })
+    if ($images.Count -gt 0) {
+        $pick = $images[(Get-Random -Maximum $images.Count)]
+        if ($pick.Extension -ieq '.png') {
+            Copy-Item -LiteralPath $pick.FullName -Destination $dst -Force
+        } else {
+            $src = [System.Drawing.Image]::FromFile($pick.FullName)
+            $src.Save($dst, [System.Drawing.Imaging.ImageFormat]::Png)
+            $src.Dispose()
+        }
+        return
+    }
     $bmp = New-Object System.Drawing.Bitmap(320, 180)
     $g   = [System.Drawing.Graphics]::FromImage($bmp)
     $g.Clear([System.Drawing.Color]::FromArgb(20, 18, 16))
-    $g.DrawString('Manual Save', [System.Drawing.Font]::new('Arial', 12), [System.Drawing.Brushes]::White, 10, 80)
     $bmp.Save($dst, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $bmp.Dispose()
 }
@@ -457,15 +476,18 @@ while ($true) {
             Write-Host "[ManualSave_Watcher] SAVE complete: $dst"
             Add-ToIndex $GMODE $WORLD $SLOT
             if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
+            $thumbVer  = Get-Date -Format 'yyyyMMddHHmmss'
+            $thumbFile = "${SLOT}_v${thumbVer}.png"
+            Get-ChildItem $THUMBS -Filter "${SLOT}_v*.png" -EA SilentlyContinue | Remove-Item -Force
             if (Test-Path -LiteralPath $THUMB_PENDING) {
                 Write-Host "[ManualSave_Watcher] Using captured thumbnail."
                 Copy-Item -LiteralPath $THUMB_PENDING -Destination "$dst\thumb.png" -Force
-                Copy-Item -LiteralPath $THUMB_PENDING -Destination "$THUMBS\$SLOT.png" -Force
+                Copy-Item -LiteralPath $THUMB_PENDING -Destination "$THUMBS\$thumbFile" -Force
                 Remove-Item -LiteralPath $THUMB_PENDING -Force
             } else {
                 Write-Host "[ManualSave_Watcher] No thumbnail, generating placeholder..."
                 New-Placeholder "$dst\thumb.png"
-                Copy-Item -LiteralPath "$dst\thumb.png" -Destination "$THUMBS\$SLOT.png" -Force
+                Copy-Item -LiteralPath "$dst\thumb.png" -Destination "$THUMBS\$thumbFile" -Force
             }
             $size  = Get-FolderSizeMB $dst
             $safeG = $GMODE -replace ' ', '_'
@@ -476,9 +498,10 @@ while ($true) {
             if (Test-Path -LiteralPath $meta) {
                 Add-Content -LiteralPath $meta "SIZE=$size MB"
                 Add-Content -LiteralPath $meta "DATE=$date"
-                Write-Host "[ManualSave_Watcher] SIZE=$size MB, DATE=$date written."
+                Add-Content -LiteralPath $meta "THUMB_FILE=$thumbFile"
+                Write-Host "[ManualSave_Watcher] SIZE=$size MB, DATE=$date, THUMB_FILE=$thumbFile written."
             }
-            Write-Done "OK" "SAVE" @{ SLOT = $SLOT }
+            Write-Done "OK" "SAVE" @{ SLOT = $SLOT; THUMB_FILE = $thumbFile }
             if ($p['SESSION_CLOSE'] -eq '1') {
                 $sid = $p['SESSION_ID']
                 if ($sid -and (Test-VanillaOwned $GMODE $SLOT $sid)) {
@@ -533,6 +556,7 @@ while ($true) {
             $target = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
             if (Test-Path -LiteralPath "$THUMBS\$SLOT.png") { Remove-Item -LiteralPath "$THUMBS\$SLOT.png" -Force }
+            Get-ChildItem $THUMBS -Filter "${SLOT}_v*.png" -EA SilentlyContinue | Remove-Item -Force
             $worldDir = "$BACKUPS\$GMODE\$WORLD"
             if ((Test-Path -LiteralPath $worldDir) -and -not (Get-ChildItem -LiteralPath $worldDir)) {
                 Remove-Item -LiteralPath $worldDir -Force

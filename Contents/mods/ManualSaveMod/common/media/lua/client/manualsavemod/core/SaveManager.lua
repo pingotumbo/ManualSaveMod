@@ -6,10 +6,12 @@
 ManualSave            = ManualSave or {}
 ManualSave.SaveManager = ManualSave.SaveManager or {}
 
-local PENDING_FILE  = "ManualSave_Pending.txt"
-local SESSION_FILE  = "ManualSave_Session.txt"
-local SCREEN_REQ    = "ManualSave_ScreenReq.txt"
-local SCREEN_DONE   = "ManualSave_ScreenDone.txt"
+local PENDING_FILE         = "ManualSave_Pending.txt"
+local SESSION_FILE         = "ManualSave_Session.txt"
+local PENDING_SESSION_FILE = "ManualSave_PendingSession.txt"
+local REENTER_FLAG         = "ManualSave_ReenterFlag.txt"
+local SCREEN_REQ           = "ManualSave_ScreenReq.txt"
+local SCREEN_DONE          = "ManualSave_ScreenDone.txt"
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -20,13 +22,16 @@ local function currentSaveInfo()
     return ok and info or nil
 end
 
-local function writePending(slotName, gmode, saveName, reenter)
+local function writePending(slotName, gmode, saveName, reenter, liveWorld)
     local w = getFileWriter(PENDING_FILE, true, false)
     if not w then return end
     w:write("SLOT="     .. slotName .. "\r\n")
     w:write("GMODE="    .. gmode    .. "\r\n")
     w:write("SAVENAME=" .. saveName .. "\r\n")
     w:write("REENTER="  .. (reenter and "1" or "0") .. "\r\n")
+    if liveWorld and liveWorld ~= saveName then
+        w:write("LIVEWORLD=" .. liveWorld .. "\r\n")
+    end
     w:close()
 end
 
@@ -56,7 +61,8 @@ local function readAndClearPending()
     local w = getFileWriter(PENDING_FILE, true, false)
     if w then w:close() end
     if not data.SLOT then return nil end
-    return { slotName=data.SLOT, gameMode=data.GMODE, saveName=data.SAVENAME, reenter=data.REENTER=="1", pendingLoad=data.PENDINGLOAD=="1" }
+    return { slotName=data.SLOT, gameMode=data.GMODE, saveName=data.SAVENAME,
+             liveWorld=data.LIVEWORLD, reenter=data.REENTER=="1", pendingLoad=data.PENDINGLOAD=="1" }
 end
 
 -- ── Screenshot helpers (Screenshotter.exe protocol, separate from SignalBus) ──
@@ -90,6 +96,37 @@ ManualSave.SaveManager._sessionWorld = nil
 ManualSave.SaveManager._sessionGmode = nil
 ManualSave.SaveManager._sessionSlot  = nil
 ManualSave.SaveManager._sessionId    = nil
+-- Set to true between fullSave() commit and game quit; prevents any signal from
+-- overwriting the SAVE signal in the shared signal file before the Watcher reads it.
+ManualSave.SaveManager._quitting     = false
+
+local function writePendingSession(slot, world, gmode, sid)
+    local w = getFileWriter(PENDING_SESSION_FILE, true, false)
+    if not w then return end
+    w:write("SLOT="  .. slot  .. "\r\n")
+    w:write("WORLD=" .. world .. "\r\n")
+    w:write("GMODE=" .. gmode .. "\r\n")
+    if sid then w:write("SID=" .. sid .. "\r\n") end
+    w:close()
+end
+
+local function readAndClearPendingSession()
+    local r = getFileReader(PENDING_SESSION_FILE, true)
+    if not r then return nil end
+    local data = {}
+    while true do
+        local line = r:readLine()
+        if line == nil then break end
+        line = line:match("^%s*(.-)%s*$")
+        local k, v = line:match("^(.-)=(.+)$")
+        if k and v then data[k] = v end
+    end
+    r:close()
+    local w = getFileWriter(PENDING_SESSION_FILE, true, false)
+    if w then w:close() end
+    if not data.SLOT then return nil end
+    return { slot=data.SLOT, world=data.WORLD, gmode=data.GMODE, sessionId=data.SID }
+end
 
 local function writeSession(slot, world, gmode, sid)
     local w = getFileWriter(SESSION_FILE, true, false)
@@ -128,27 +165,48 @@ local function restoreSessionIfNeeded(info)
     end
 end
 
--- True for the first OnMainMenuEnter in each Lua VM lifetime.
--- A genuine game→menu exit reloads the Lua VM (all module code re-runs → reset to true).
--- A continueLatestSaveAux load transition fires OnMainMenuEnter WITHOUT reloading the VM,
--- so the flag is already false and the cleanup block is skipped.
 local _firstMenuEnter = true
 
 Events.OnMainMenuEnter.Add(function()
     if _firstMenuEnter then
         _firstMenuEnter = false
-        local s = readSession()
-        if s and s.sessionId then
-            ManualSave.SignalBus.send("SESSION_END",
-                { GMODE=s.gmode, SLOT=s.slot, SESSION_ID=s.sessionId })
-            local w = getFileWriter(SESSION_FILE, true, false)
-            if w then w:close() end
+        -- Check reenter flag: written by fullSave(reenter=true) before PZ quits.
+        -- If present, the player is coming back for Save & Return — the vanilla
+        -- slot must NOT be deleted. Clear the flag and skip SESSION_END.
+        local rfr = getFileReader(REENTER_FLAG, true)
+        local reenterPending = false
+        if rfr then reenterPending = rfr:readLine() ~= nil; rfr:close() end
+        -- Do NOT clear the flag here: continueLatestSaveAux() may reload the Lua VM,
+        -- triggering another OnMainMenuEnter before OnGameStart fires. The flag must
+        -- survive until OnGameStart so that second OnMainMenuEnter also skips SESSION_END.
+        if not reenterPending then
+            local s = readSession()
+            if s and s.sessionId then
+                ManualSave.SignalBus.send("SESSION_END",
+                    { GMODE=s.gmode, SLOT=s.slot, SESSION_ID=s.sessionId })
+                local w = getFileWriter(SESSION_FILE, true, false)
+                if w then w:close() end
+            end
         end
     end
     ManualSave.SaveManager._sessionWorld = nil
     ManualSave.SaveManager._sessionGmode = nil
     ManualSave.SaveManager._sessionSlot  = nil
     ManualSave.SaveManager._sessionId    = nil
+end)
+
+-- Once the game is fully running, promote the pending session to the real session file.
+-- Writing it only here (not before continueLatestSaveAux) prevents OnMainMenuEnter from
+-- finding it and firing a premature SESSION_END when PZ reloads the Lua VM during load.
+Events.OnGameStart.Add(function()
+    -- Session is now fully running: clear the reenter flag (safe to do now).
+    local fw = getFileWriter(REENTER_FLAG, true, false)
+    if fw then fw:close() end
+    local ps = readAndClearPendingSession()
+    if ps then
+        writeSession(ps.slot, ps.world, ps.gmode, ps.sessionId)
+        ManualSave.SaveManager._sessionId = ps.sessionId
+    end
 end)
 
 local function resolveWorld(info)
@@ -164,73 +222,62 @@ local function resolveLiveWorld(info)
     return info.saveName
 end
 
--- ── Public API ────────────────────────────────────────────────────────────────
+-- ── Save pipeline ─────────────────────────────────────────────────────────────
+--
+-- ctx = {
+--   mode      "QUICK" | "FULL"
+--   slot      string
+--   gmode     string
+--   world     string   original/session world name
+--   liveWorld string   actual PZ live folder (may differ after a load)
+--   reenter   bool?    FULL only: true = Save & Return
+--   onDone    fun?     QUICK only: called with "OK"|"ERROR" when Watcher confirms
+-- }
+--
+-- Step 1 [FULL] — flags & prepare: set _quitting, write reenter flag, write
+--                 pending file, unpause so OnRenderTick can fire.
+-- Step 2 [both] — screenshot (async): request → wait OnRenderTick → done.
+-- Step 3 [both] — flush, metadata, signal, post-action:
+--                 QUICK: save(true) → metadata → SAVE signal → wait DONE → onDone
+--                 FULL:  metadata → SAVE signal → quit (Watcher runs after PZ exits)
+local function executeSave(ctx)
 
--- Quick save: screenshot → write meta → send SAVE signal.
--- onDone(status) where status = "OK" | "ERROR"
----@param slotName string
----@param onDone   fun(status:string)?
-function ManualSave.SaveManager.quickSave(slotName, onDone)
-    local info = currentSaveInfo()
-    if not info then
-        if onDone then pcall(onDone, "ERROR") end
-        return
-    end
-    local gmode     = resolveGmode(info)
-    local world     = resolveWorld(info)
-    local liveWorld = resolveLiveWorld(info)
-
-    clearScreenshotDone()
-    requestScreenshot(slotName)
-
-    local frames = 0
-    local handler
-    handler = function()
-        frames = frames + 1
-        if checkScreenshotDone() or frames >= 300 then
-            Events.OnRenderTick.Remove(handler)
-            clearScreenshotDone()
-            save(true)
-            local meta = ManualSave.MetaCache.collectLiveData("QUICK")
-            ManualSave.MetaCache.write(gmode, world, slotName, meta)
-            local params = { GMODE=gmode, WORLD=world, SLOT=slotName }
-            if liveWorld ~= world then params.LIVE_WORLD = liveWorld end
-            ManualSave.SignalBus.send("SAVE", params,
-                function(status) if onDone then pcall(onDone, status) end end)
+    -- ── Step 1: prepare (FULL only) ───────────────────────────────────────────
+    if ctx.mode == "FULL" then
+        ManualSave.SaveManager._quitting = true
+        if ctx.reenter then
+            local fw = getFileWriter(REENTER_FLAG, true, false)
+            if fw then fw:write("1\r\n"); fw:close() end
         end
+        writePending(ctx.slot, ctx.gmode, ctx.world, ctx.reenter or false, ctx.liveWorld)
+        pcall(function() if getPlayer() then setGameSpeed(1) end end)
     end
-    Events.OnRenderTick.Add(handler)
-end
 
--- Full save: writes meta + pending file, sends SAVE signal, then quits.
--- No callback — the game process exits.
----@param slotName string
----@param reenter  boolean?  if true, re-enters the world after the .bat finishes
-function ManualSave.SaveManager.fullSave(slotName, reenter)
-    local info = currentSaveInfo()
-    if not info then return end
-    local gmode     = resolveGmode(info)
-    local world     = resolveWorld(info)
-    local liveWorld = resolveLiveWorld(info)
-
-    local meta = ManualSave.MetaCache.collectLiveData("FULL")
-    ManualSave.MetaCache.write(gmode, world, slotName, meta)
-    writePending(slotName, gmode, world, reenter or false)
-
-    -- Take screenshot while game is still visible, then send signal and quit
+    -- ── Step 2: screenshot (async) ────────────────────────────────────────────
     clearScreenshotDone()
-    requestScreenshot(slotName)
-
+    requestScreenshot(ctx.slot)
     local frames = 0
     local handler
     handler = function()
         frames = frames + 1
-        if checkScreenshotDone() or frames >= 300 then
-            Events.OnRenderTick.Remove(handler)
-            clearScreenshotDone()
-            local params = { GMODE=gmode, WORLD=world, SLOT=slotName }
-            if liveWorld ~= world then params.LIVE_WORLD = liveWorld end
-            if not reenter and ManualSave.SaveManager._sessionId then
+        if not (checkScreenshotDone() or frames >= 300) then return end
+        Events.OnRenderTick.Remove(handler)
+        clearScreenshotDone()
+
+        -- ── Step 3: flush + metadata + signal + post-action ──────────────────
+        if ctx.mode == "QUICK" then save(true) end
+
+        local meta = ManualSave.MetaCache.collectLiveData(ctx.mode)
+        ManualSave.MetaCache.write(ctx.gmode, ctx.world, ctx.slot, meta)
+
+        local params = { GMODE=ctx.gmode, WORLD=ctx.world, SLOT=ctx.slot }
+        if ctx.liveWorld ~= ctx.world then params.LIVE_WORLD = ctx.liveWorld end
+
+        if ctx.mode == "QUICK" then
+            ManualSave.SignalBus.send("SAVE", params,
+                function(status) if ctx.onDone then pcall(ctx.onDone, status) end end)
+        else
+            if not ctx.reenter and ManualSave.SaveManager._sessionId then
                 params.SESSION_CLOSE = "1"
                 params.SESSION_ID    = ManualSave.SaveManager._sessionId
             end
@@ -246,6 +293,42 @@ function ManualSave.SaveManager.fullSave(slotName, reenter)
     Events.OnRenderTick.Add(handler)
 end
 
+-- ── Public API ────────────────────────────────────────────────────────────────
+
+---@param slotName string
+---@param onDone   fun(status:string)?
+function ManualSave.SaveManager.quickSave(slotName, onDone)
+    local info = currentSaveInfo()
+    if not info then
+        if onDone then pcall(onDone, "ERROR") end
+        return
+    end
+    executeSave({
+        mode      = "QUICK",
+        slot      = slotName,
+        gmode     = resolveGmode(info),
+        world     = resolveWorld(info),
+        liveWorld = resolveLiveWorld(info),
+        onDone    = onDone,
+    })
+end
+
+---@param slotName string
+---@param reenter  boolean?
+function ManualSave.SaveManager.fullSave(slotName, reenter)
+    if ManualSave.SaveManager._quitting then return end
+    local info = currentSaveInfo()
+    if not info then return end
+    executeSave({
+        mode      = "FULL",
+        slot      = slotName,
+        gmode     = resolveGmode(info),
+        world     = resolveWorld(info),
+        liveWorld = resolveLiveWorld(info),
+        reenter   = reenter or false,
+    })
+end
+
 -- Checks for a pending reenter after a full save and acts on it.
 -- Call this from OnMainMenuEnter.
 function ManualSave.SaveManager.checkReenter()
@@ -253,6 +336,8 @@ function ManualSave.SaveManager.checkReenter()
     if not p or not p.reenter then return end
     ManualSave.SaveManager._sessionWorld = p.saveName
     ManualSave.SaveManager._sessionGmode = p.gameMode
+    local s = readSession()
+    if s then ManualSave.SaveManager._sessionId = s.sessionId end
     if p.pendingLoad then
         -- Second Watcher copy from clean main menu: PZ is fully stopped so it
         -- cannot overwrite the restored backup this time.
@@ -260,7 +345,7 @@ function ManualSave.SaveManager.checkReenter()
         return
     end
     getWorld():setGameMode(p.gameMode)
-    getWorld():setWorld(p.saveName)
+    getWorld():setWorld(p.liveWorld or p.saveName)
     MainScreen.instance:setDefaultSandboxVars()
     MainScreen.continueLatestSaveAux()
 end
@@ -298,7 +383,6 @@ function ManualSave.SaveManager.load(gmode, world, slot, onDone)
                 ManualSave.SaveManager._sessionGmode = gmode
                 ManualSave.SaveManager._sessionSlot  = slot
                 ManualSave.SaveManager._sessionId    = result and result.SESSION_ID
-                writeSession(slot, world, gmode, result and result.SESSION_ID)
 
                 local ok, liveWorld = pcall(function()
                     return getWorld() and getWorld():getWorld()
@@ -309,12 +393,21 @@ function ManualSave.SaveManager.load(gmode, world, slot, onDone)
                     -- to get a clean PZ state; checkReenter() will call load() again
                     -- from the main menu, triggering a second Watcher copy that PZ
                     -- can no longer interfere with.
+                    -- Clear any existing session file so OnMainMenuEnter does NOT
+                    -- find it and send a premature SESSION_END on restart.
+                    local sw = getFileWriter(SESSION_FILE, true, false)
+                    if sw then sw:close() end
                     writePendingLoad(slot, gmode, world)
                     if onDone then pcall(onDone, status) end
                     getCore():quit()
                     return
                 end
 
+                -- Do NOT write the session file here: continueLatestSaveAux reloads
+                -- the Lua VM which fires OnMainMenuEnter with _firstMenuEnter=true,
+                -- which would find the session file and send a premature SESSION_END.
+                -- Instead write a pending session file and promote it in OnGameStart.
+                writePendingSession(slot, world, gmode, result and result.SESSION_ID)
                 getWorld():setGameMode(gmode)
                 getWorld():setWorld(slot)
                 MainScreen.instance:setDefaultSandboxVars()

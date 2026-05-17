@@ -119,7 +119,8 @@ function ManualSave.makeSaveList(parent, opts)
         st.fadealpha     = 0
         st.selectedThumb = nil
         pcall(function()
-            local tex = getTextureFromSaveDir(item.slot .. ".png", "ManualSave_Thumbs")
+            local thumbFile = item.THUMB_FILE or (item.slot .. ".png")
+            local tex = getTextureFromSaveDir(thumbFile, "ManualSave_Thumbs")
                      or getTextureFromSaveDir("thumb.png", "MSM_THUMB_" .. item.slot)
             st.selectedThumb = tex
         end)
