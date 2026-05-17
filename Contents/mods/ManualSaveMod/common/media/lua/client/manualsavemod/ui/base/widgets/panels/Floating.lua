@@ -31,10 +31,21 @@ function ManualSave.makeFloatingPanel(opts)
     local titleH = TH.FONT_HGT_LARGE + 22
 
     local p = ISPanel:new(px, py, opts.w, opts.h)
-    p.backgroundColor = { r=TH.BG_R,  g=TH.BG_G,  b=TH.BG_B,  a=0.98 }
-    p.borderColor     = { r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=1   }
+    p.backgroundColor = { r=TH.BG_R, g=TH.BG_G, b=TH.BG_B, a=1 }
+    p.borderColor     = { r=0, g=0, b=0, a=0 }   -- drawn manually below
     p:initialise()
     p:instantiate()
+    p.prerender = function(self2)
+        ISPanel.prerender(self2)
+    end
+
+    p.render = function(self2)
+        local TH2 = ManualSave.Theme
+        self2:drawRectBorder(0, 0, self2.width, self2.height, 0.85,
+            TH2.ACCENT_R * 0.85, TH2.ACCENT_G * 0.60, TH2.ACCENT_B * 0.35)
+        self2:drawRectBorder(1, 1, self2.width - 2, self2.height - 2, 0.22,
+            TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+    end
 
     -- Title bar background
     local titleBar = ISPanel:new(0, 0, opts.w, titleH)
@@ -134,16 +145,22 @@ function ManualSave.makeFloatingPanel(opts)
     if opts.onFocus      then p.onFocus      = opts.onFocus      end
     if opts.onLostFocus  then p.onLostFocus  = opts.onLostFocus  end
     if opts.onKeyPressed then p.onKeyPressed = opts.onKeyPressed end
-    if opts.render       then p.render       = opts.render       end
+    if opts.render then
+        local _borderRender = p.render
+        local _userRender   = opts.render
+        p.render = function(self2) _borderRender(self2); _userRender(self2) end
+    end
 
-    -- Always stay on top; wrap opts.update if provided
+    -- Stay on top unless a modal is open; wrap opts.update if provided
     local _userUpdate = opts.update
     p.update = function(self2)
         ISPanel.update(self2)
-        self2:bringToTop()
+        if (ManualSave._uiTopLock or 0) == 0 then
+            self2:bringToTop()
+        end
         if _userUpdate then _userUpdate(self2) end
     end
-    if opts.noBorder     then p.borderColor  = { r=0, g=0, b=0, a=0 } end
+    if opts.noBorder then p.render = function() end end
 
     if opts.onClose then obj.onClose(opts.onClose) end
 
@@ -199,7 +216,9 @@ function ManualSave.makeExpandPanel(opts)
         -- Stay on top of the parent screen when other panels are clicked.
         d.panel.update = function(self2)
             ISPanel.update(self2)
-            self2:bringToTop()
+            if (ManualSave._uiTopLock or 0) == 0 then
+                self2:bringToTop()
+            end
         end
         d.open()
     end

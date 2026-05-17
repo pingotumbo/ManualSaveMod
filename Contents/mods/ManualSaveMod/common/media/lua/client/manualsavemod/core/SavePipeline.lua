@@ -70,17 +70,8 @@ local function executeSave(ctx)
         pcall(function() if getPlayer() then setGameSpeed(1) end end)
     end
 
-    -- Step 2: screenshot async ─────────────────────────────────────────────────
-    clearScreenshotDone()
-    requestScreenshot(ctx.slot)
-    local frames = 0
-    local handler
-    handler = function()
-        frames = frames + 1
-        if not (checkScreenshotDone() or frames >= 300) then return end
-        Events.OnRenderTick.Remove(handler)
-        clearScreenshotDone()
-
+    -- Step 2: screenshot async (skipped when THUMB_SOURCE is not "screenshot") ──
+    local function runStep3()
         -- Step 3: flush + metadata + segnale + post-action ────────────────────
         if ctx.mode == "QUICK" then save(true) end
 
@@ -98,7 +89,20 @@ local function executeSave(ctx)
             ManualSave.SignalBus.send("SAVE", params,
                 function(status)
                     ManualSave.SaveLock.unlock()
-                    if progressPanel then pcall(progressPanel.close) end
+                    if progressPanel then
+                        pcall(progressPanel.showDone)
+                        -- show done frame briefly before closing
+                        local t = 0
+                        local closeHandler
+                        closeHandler = function()
+                            t = t + 1
+                            if t >= 40 then
+                                Events.OnRenderTick.Remove(closeHandler)
+                                pcall(progressPanel.close)
+                            end
+                        end
+                        Events.OnRenderTick.Add(closeHandler)
+                    end
                     if ctx.onDone then pcall(ctx.onDone, status) end
                 end)
         else
@@ -117,7 +121,23 @@ local function executeSave(ctx)
             getCore():quit()
         end
     end
-    Events.OnRenderTick.Add(handler)
+
+    if ManualSave.Config.get("THUMB_SOURCE") ~= "screenshot" then
+        runStep3()
+    else
+        clearScreenshotDone()
+        requestScreenshot(ctx.slot)
+        local frames = 0
+        local handler
+        handler = function()
+            frames = frames + 1
+            if not (checkScreenshotDone() or frames >= 300) then return end
+            Events.OnRenderTick.Remove(handler)
+            clearScreenshotDone()
+            runStep3()
+        end
+        Events.OnRenderTick.Add(handler)
+    end
 end
 
 -- ── API pubblica ──────────────────────────────────────────────────────────────

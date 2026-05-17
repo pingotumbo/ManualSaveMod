@@ -70,6 +70,21 @@ $HB             = 0
 
 if (-not (Test-Path $LuaDir)) { New-Item -ItemType Directory -Path $LuaDir -Force | Out-Null }
 
+# Override $BACKUPS from ManualSave_Config.txt if BACKUP_DIR is set and the path exists
+$_cfgFile = "$LuaDir\ManualSave_Config.txt"
+if (Test-Path $_cfgFile) {
+    foreach ($line in (Get-Content $_cfgFile -EA SilentlyContinue)) {
+        if ($line -match '^BACKUP_DIR=(.+)$') {
+            $_bd = [System.Environment]::ExpandEnvironmentVariables($Matches[1].Trim())
+            if ($_bd -ne '' -and (Test-Path $_bd)) {
+                $BACKUPS = $_bd
+                Write-Host "[ManualSave_Watcher] Backup dir: $BACKUPS"
+            }
+            break
+        }
+    }
+}
+
 Write-Host "[ManualSave_Watcher] Loading (compiling native libs)..."
 
 # ── Win32 / GDI setup (compiled before lock so MSM_Win is available in the catch block) ──
@@ -472,24 +487,39 @@ while ($true) {
                 Start-Sleep -Seconds 1
             }
             Write-Host "[ManualSave_Watcher] Copying: $src -> $dst"
-            $total = 0
-            try { $total = (Get-ChildItem -LiteralPath $src -Recurse -File -EA Stop).Count } catch {}
-            "COPIED=0`r`nTOTAL=$total" | Set-Content $PROGRESS -Encoding UTF8
+            $totalBytes = 0
+            try { $totalBytes = (Get-ChildItem -LiteralPath $src -Recurse -File -EA Stop | Measure-Object -Property Length -Sum).Sum } catch {}
+            if (-not $totalBytes) { $totalBytes = 0 }
+            $startEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+            "COPIED=0`r`nTOTAL=$totalBytes`r`nSTARTED=$startEpoch" | Set-Content $PROGRESS -Encoding UTF8
 
             $rcLog  = [IO.Path]::GetTempFileName()
             $rcProc = Start-Process robocopy `
                 -ArgumentList "`"$src`" `"$dst`" /E /COPY:DAT /R:2 /W:2 /NDL /NJH /NJS" `
                 -RedirectStandardOutput $rcLog -NoNewWindow -PassThru
-            $copied = 0
+            $copiedBytes = 0
+            $lastLine    = 0
             while (-not $rcProc.HasExited) {
                 Start-Sleep -Milliseconds 300
                 $lines = Get-Content $rcLog -EA SilentlyContinue
-                if ($lines) {
-                    $n = ($lines | Where-Object { $_ -match '\S' }).Count
-                    if ($n -ne $copied) { $copied = $n; "COPIED=$copied`r`nTOTAL=$total" | Set-Content $PROGRESS -Encoding UTF8 }
+                if ($lines -and $lines.Count -gt $lastLine) {
+                    foreach ($line in $lines[$lastLine..($lines.Count - 1)]) {
+                        # robocopy file lines: <spaces><status><spaces><size><spaces><filename>
+                        if ($line -match '\s+([\d,]+)\s+\S') {
+                            $copiedBytes += [long]($Matches[1] -replace ',', '')
+                        }
+                    }
+                    $lastLine = $lines.Count
+                    "COPIED=$copiedBytes`r`nTOTAL=$totalBytes`r`nSTARTED=$startEpoch" | Set-Content $PROGRESS -Encoding UTF8
+                    $elapsed = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $startEpoch
+                    $speed   = if ($elapsed -gt 0) { [long]($copiedBytes / $elapsed) } else { 0 }
+                    $pct     = if ($totalBytes -gt 0) { [int]($copiedBytes * 100 / $totalBytes) } else { 0 }
+                    $spdStr  = if ($speed -ge 1GB) { "{0:F1} GB/s" -f ($speed / 1GB) } elseif ($speed -ge 1MB) { "{0:F0} MB/s" -f ($speed / 1MB) } elseif ($speed -ge 1KB) { "{0:F0} KB/s" -f ($speed / 1KB) } else { "$speed B/s" }
+                    Write-Host "`r[ManualSave_Watcher] SAVE $pct% | $spdStr    " -NoNewline
                 }
             }
             $rcExit = $rcProc.ExitCode
+            Write-Host ""
             Remove-Item $rcLog      -Force -EA SilentlyContinue
             Remove-Item $PROGRESS   -Force -EA SilentlyContinue
             if ($rcExit -ge 16) { Write-Host "[ManualSave_Watcher] ERROR: robocopy fatal, code $rcExit"; break }
@@ -605,8 +635,37 @@ while ($true) {
             $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             $dst = "$SAVES\$GMODE\$EXPORT_NAME"
             if (-not (Test-Path $src)) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: source not found: $src"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
-            & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: robocopy failed, code $LASTEXITCODE"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
+            $totalBytes = 0
+            try { $totalBytes = (Get-ChildItem -LiteralPath $src -Recurse -File -EA Stop | Measure-Object -Property Length -Sum).Sum } catch {}
+            if (-not $totalBytes) { $totalBytes = 0 }
+            $startEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+            "COPIED=0`r`nTOTAL=$totalBytes`r`nSTARTED=$startEpoch" | Set-Content $PROGRESS -Encoding UTF8
+            $rcLog2  = [IO.Path]::GetTempFileName()
+            $rcProc2 = Start-Process robocopy `
+                -ArgumentList "`"$src`" `"$dst`" /E /COPY:DAT /R:2 /W:2 /NDL /NJH /NJS" `
+                -RedirectStandardOutput $rcLog2 -NoNewWindow -PassThru
+            $copiedBytes2 = 0; $lastLine2 = 0
+            while (-not $rcProc2.HasExited) {
+                Start-Sleep -Milliseconds 300
+                $lines2 = Get-Content $rcLog2 -EA SilentlyContinue
+                if ($lines2 -and $lines2.Count -gt $lastLine2) {
+                    foreach ($line2 in $lines2[$lastLine2..($lines2.Count - 1)]) {
+                        if ($line2 -match '\s+([\d,]+)\s+\S') { $copiedBytes2 += [long]($Matches[1] -replace ',', '') }
+                    }
+                    $lastLine2 = $lines2.Count
+                    "COPIED=$copiedBytes2`r`nTOTAL=$totalBytes`r`nSTARTED=$startEpoch" | Set-Content $PROGRESS -Encoding UTF8
+                    $elapsed2 = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $startEpoch
+                    $speed2   = if ($elapsed2 -gt 0) { [long]($copiedBytes2 / $elapsed2) } else { 0 }
+                    $pct2     = if ($totalBytes -gt 0) { [int]($copiedBytes2 * 100 / $totalBytes) } else { 0 }
+                    $spdStr2  = if ($speed2 -ge 1GB) { "{0:F1} GB/s" -f ($speed2/1GB) } elseif ($speed2 -ge 1MB) { "{0:F0} MB/s" -f ($speed2/1MB) } elseif ($speed2 -ge 1KB) { "{0:F0} KB/s" -f ($speed2/1KB) } else { "$speed2 B/s" }
+                    Write-Host "`r[ManualSave_Watcher] EXPORT_VANILLA $pct2% | $spdStr2    " -NoNewline
+                }
+            }
+            $rcExit2 = $rcProc2.ExitCode
+            Write-Host ""
+            Remove-Item $rcLog2   -Force -EA SilentlyContinue
+            Remove-Item $PROGRESS -Force -EA SilentlyContinue
+            if ($rcExit2 -ge 8) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: robocopy failed, code $rcExit2"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
             $thumbSrc = "$dst\thumb.png"
             if (Test-Path -LiteralPath $thumbSrc) {
                 try { Save-ThumbCropped $thumbSrc $thumbSrc 250 }

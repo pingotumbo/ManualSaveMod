@@ -72,20 +72,22 @@ function ManualSave.openLoadScreen(fromMainMenu)
     })
 
     -- Footer — all widths derived from translated text.
-    local footerY = PH - TH.BUTTON_HGT - TH.PAD
-    local backW   = ManualSave.textBtnW(getText("UI_MSM_Common_BtnBack"),  70)
-    local importW = ManualSave.textBtnW(getText("UI_MSM_Load_BtnImport"),  80)
-    local moreW   = ManualSave.textBtnW(getText("UI_MSM_Load_BtnMore"),    70)
-    local loadW   = ManualSave.textBtnW(getText("UI_MSM_Load_BtnLoad"),   120)
+    local footerY    = PH - TH.BUTTON_HGT - TH.PAD
+    local backW      = ManualSave.textBtnW(getText("UI_MSM_Common_BtnBack"),     70)
+    local importW    = ManualSave.textBtnW(getText("UI_MSM_Load_BtnImport"),     80)
+    local settingsW  = ManualSave.textBtnW(getText("UI_MSM_Common_BtnSettings"), 60)
+    local moreW      = ManualSave.textBtnW(getText("UI_MSM_Load_BtnMore"),       70)
+    local loadW      = ManualSave.textBtnW(getText("UI_MSM_Load_BtnLoad"),      120)
 
     -- Left-side positions
-    local backX   = TH.PAD
-    local importX = backX + backW + TH.GAP
+    local backX     = TH.PAD
+    local importX   = backX + backW + TH.GAP
+    local settingsX = importX + (fromMainMenu and importW + TH.GAP or 0)
     -- Right-side positions
-    local loadX   = PW - TH.PAD - loadW
-    local moreX   = loadX - TH.GAP - moreW
-    -- Info / warning zone between the two groups (uses import offset even when hidden)
-    local infoX   = importX + importW + TH.GAP
+    local loadX     = PW - TH.PAD - loadW
+    local moreX     = loadX - TH.GAP - moreW
+    -- Info / warning zone between settings button and More button
+    local infoX     = settingsX + settingsW + TH.GAP
 
     ManualSave.makeButton(p, {
         x=backX, y=footerY, w=backW, h=TH.BUTTON_HGT,
@@ -103,6 +105,11 @@ function ManualSave.openLoadScreen(fromMainMenu)
             end,
         })
     end
+    ManualSave.makeButton(p, {
+        x=settingsX, y=footerY, w=settingsW, h=TH.BUTTON_HGT,
+        label=getText("UI_MSM_Common_BtnSettings"), style="normal",
+        onClick = function() ManualSave.openSettingsScreen() end,
+    })
     ManualSave.LoadScreen._btnMore = ManualSave.makeButton(p, {
         x=moreX, y=footerY, w=moreW, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Load_BtnMore"), style="normal", enabled=false,
@@ -149,7 +156,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
         local st  = ls and ls._state
         local sel = st and st.selected
         if ls._btnLoad then ls._btnLoad.setEnabled(v and sel ~= nil and not sel.CORRUPTED) end
-        if ls._btnMore then ls._btnMore.setEnabled(v and sel ~= nil) end
+        if ls._btnMore then ls._btnMore.setEnabled(sel ~= nil) end
         if ls._actBtns then
             ls._actBtns.rename.setEnabled(v and sel ~= nil)
             ls._actBtns.clone.setEnabled(v and sel ~= nil)
@@ -167,8 +174,9 @@ function ManualSave.openLoadScreen(fromMainMenu)
         ManualSave.LoadScreen._warnLabel = nil
         ManualSave.UI.clearGroup("bat_required")
         ManualSave.closeMoreScreen()
-        if ManualSave.closeImportScreen then ManualSave.closeImportScreen() end
-        if ManualSave.closeHelpScreen   then ManualSave.closeHelpScreen()   end
+        if ManualSave.closeImportScreen  then ManualSave.closeImportScreen()  end
+        if ManualSave.closeHelpScreen    then ManualSave.closeHelpScreen()    end
+        if ManualSave.closeSettingsScreen then ManualSave.closeSettingsScreen() end
         if wasInGame then setGameSpeed(1); setShowPausedMessage(true) end
     end)
 
@@ -184,10 +192,12 @@ end
 function ManualSave.LoadScreen.updateWarnArea()
     local ls = ManualSave.LoadScreen
     if not ls._screen or not ls._warnLabel then return end
-    local offline = ManualSave.SignalBus.isBatAlive() == false
-    local busy    = ManualSave._progressActive == true
-    ls._warnLabel.setVisible(offline or busy)
-    ls._infoBtn.btn:setVisible(offline or busy)
+    local offline    = ManualSave.SignalBus.isBatAlive() == false
+    local busy       = ManualSave._progressActive == true
+    local warnHidden = ManualSave.Config.get("SHOW_WATCHER_WARN") == "0"
+    local show       = busy or (offline and not warnHidden)
+    ls._warnLabel.setVisible(show)
+    ls._infoBtn.btn:setVisible(show)
     ls._warnLabel.setText(busy
         and getText("UI_MSM_Common_WarnBusy")
         or  getText("UI_MSM_Common_WarnOffline"))
@@ -196,6 +206,14 @@ end
 -- Shows a confirmation dialog before loading. Closes LoadScreen on confirm.
 -- m must have GMODE/gameMode, WORLD/world, slot fields.
 function ManualSave.LoadScreen.confirmLoad(m)
+    local function doLoad()
+        ManualSave.closeLoadScreen()
+        ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
+    end
+    if ManualSave.Config.get("CONFIRM_LOAD") == "0" then
+        doLoad()
+        return
+    end
     local fromMainMenu = ManualSave.LoadScreen._state and ManualSave.LoadScreen._state.fromMainMenu
     local bodyKey  = fromMainMenu and "UI_MSM_Load_ConfirmBodyMainMenu" or "UI_MSM_Load_ConfirmBodyInGame"
     local bodyText = getText(bodyKey)
@@ -206,10 +224,7 @@ function ManualSave.LoadScreen.confirmLoad(m)
         body    = body,
         confirm = getText("UI_MSM_Load_BtnLoad"),
         danger  = true,
-        onConfirm = function()
-            ManualSave.closeLoadScreen()
-            ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
-        end,
+        onConfirm = doLoad,
     })
 end
 

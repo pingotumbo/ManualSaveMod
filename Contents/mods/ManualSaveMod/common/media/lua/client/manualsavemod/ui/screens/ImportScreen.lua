@@ -361,9 +361,28 @@ function ManualSave.openImportScreen()
             if not ManualSave.ImportScreen.writeQueueFile(allFlat) then
                 phase = "error"; errMsg = getText("UI_MSM_Import_ErrQueueFile"); return
             end
+            local progressPanel = ManualSave.openProgressPanel and
+                ManualSave.openProgressPanel({ label = getText("UI_MSM_Import_BtnImport") }) or nil
             _importing = true; _screen = nil; d.close()
             ManualSave.SignalBus.send("IMPORT", nil, function(status)
                 _importing = false
+                if progressPanel then
+                    if status == "OK" then
+                        pcall(progressPanel.showDone)
+                        local t = 0
+                        local closeH
+                        closeH = function()
+                            t = t + 1
+                            if t >= 60 then
+                                Events.OnRenderTick.Remove(closeH)
+                                pcall(progressPanel.close)
+                            end
+                        end
+                        Events.OnRenderTick.Add(closeH)
+                    else
+                        pcall(progressPanel.close)
+                    end
+                end
                 if status == "OK" then
                     for _, e in ipairs(allFlat) do
                         if e.checked then

@@ -97,6 +97,9 @@ end
 ---@param newSlot string
 ---@param onDone  fun(status:string, result:table?)?
 function ManualSave.SaveManager.clone(gmode, world, oldSlot, newSlot, onDone)
+    local progressPanel = ManualSave.openProgressPanel and
+        ManualSave.openProgressPanel({ label = newSlot }) or nil
+
     ManualSave.SignalBus.send("CLONE",
         { GMODE=gmode, WORLD=world, OLD_SLOT=oldSlot, NEW_SLOT=newSlot },
         function(status, result)
@@ -104,7 +107,27 @@ function ManualSave.SaveManager.clone(gmode, world, oldSlot, newSlot, onDone)
                 ManualSave.MetaCache.copy(gmode, world, oldSlot, newSlot, true,
                     result and result.DATE)
             end
-            if onDone then pcall(onDone, status, result) end
+            if progressPanel then
+                if status == "OK" then
+                    pcall(progressPanel.showDone)
+                    local t = 0
+                    local closeH
+                    closeH = function()
+                        t = t + 1
+                        if t >= 80 then
+                            Events.OnRenderTick.Remove(closeH)
+                            pcall(progressPanel.close)
+                            if onDone then pcall(onDone, status, result) end
+                        end
+                    end
+                    Events.OnRenderTick.Add(closeH)
+                else
+                    pcall(progressPanel.close)
+                    if onDone then pcall(onDone, status, result) end
+                end
+            else
+                if onDone then pcall(onDone, status, result) end
+            end
         end)
 end
 

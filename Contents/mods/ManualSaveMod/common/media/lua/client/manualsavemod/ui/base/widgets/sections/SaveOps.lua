@@ -35,6 +35,7 @@ function ManualSave.makeSaveActions(parent, opts)
         label=getText("UI_MSM_Ops_BtnExportVanilla"), style="normal",
         groups={"bat_required"},
         onClick = function()
+            if ManualSave._progressActive then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
             local m2 = st.selected
@@ -57,9 +58,29 @@ function ManualSave.makeSaveActions(parent, opts)
                 onConfirm = function(exportName)
                     exportName = sanitize(exportName)
                     if exportName == "" then return end
+                    local progressPanel = ManualSave.openProgressPanel and
+                        ManualSave.openProgressPanel({ label = exportName }) or nil
                     ManualSave.SignalBus.send("EXPORT_VANILLA",
                         { GMODE=m2.GMODE or m2.gameMode, WORLD=m2.WORLD or m2.world, SLOT=m2.slot, EXPORT_NAME=exportName },
-                        function() end)
+                        function(status)
+                            if progressPanel then
+                                if status == "OK" then
+                                    pcall(progressPanel.showDone)
+                                    local t = 0
+                                    local closeH
+                                    closeH = function()
+                                        t = t + 1
+                                        if t >= 60 then
+                                            Events.OnRenderTick.Remove(closeH)
+                                            pcall(progressPanel.close)
+                                        end
+                                    end
+                                    Events.OnRenderTick.Add(closeH)
+                                else
+                                    pcall(progressPanel.close)
+                                end
+                            end
+                        end)
                 end,
             })
         end,
@@ -69,6 +90,7 @@ function ManualSave.makeSaveActions(parent, opts)
         label=getText("UI_MSM_Ops_BtnDuplicate"), style="normal",
         groups={"bat_required"},
         onClick = function()
+            if ManualSave._progressActive then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
             ManualSave.openNameInputDialog({
@@ -177,6 +199,7 @@ function ManualSave.makeSaveActions(parent, opts)
         label=getText("UI_MSM_Ops_BtnEditMods"), style="danger",
         groups={"bat_required"},
         onClick = function()
+            if ManualSave._progressActive then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end
             ManualSave.openEditModsScreen({
@@ -355,6 +378,7 @@ function ManualSave.makeRecoveryFlags(parent, opts)
         label = getText("UI_MSM_Ops_BtnLoadWithFlags"),
         groups={"bat_required"},
         onClick = function()
+            if ManualSave._progressActive then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
             local anyActive = false
             for _, v in pairs(flags) do if v then anyActive = true; break end end

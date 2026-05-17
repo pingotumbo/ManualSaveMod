@@ -735,7 +735,6 @@ function ManualSave.openHelpScreen(section)
     local d  = ManualSave.makeFloatingPanel({
         w=W, h=H, title=getText("UI_MSM_Help_Title"),
         subtitle = navSubtitle(),
-        noBorder = true,
         onClose  = function() ManualSave.closeHelpScreen() end,
         render   = function(self2)
             local TH2 = ManualSave.Theme
