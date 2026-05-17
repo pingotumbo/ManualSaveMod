@@ -22,9 +22,10 @@ ManualSave            = ManualSave or {}
 ManualSave.SavePipeline = ManualSave.SavePipeline or {}
 
 -- ── Costanti file ─────────────────────────────────────────────────────────────
-local SCREEN_REQ   = "ManualSave_ScreenReq.txt"
-local SCREEN_DONE  = "ManualSave_ScreenDone.txt"
-local REENTER_FLAG = "ManualSave_ReenterFlag.txt"
+local SCREEN_REQ      = "ManualSave_ScreenReq.txt"
+local SCREEN_DONE     = "ManualSave_ScreenDone.txt"
+local REENTER_FLAG    = "ManualSave_ReenterFlag.txt"
+local FULLSAVE_PENDING = "ManualSave_FullSavePending.txt"
 
 -- ── Helpers privati ───────────────────────────────────────────────────────────
 
@@ -106,6 +107,8 @@ local function executeSave(ctx)
                 params.SESSION_CLOSE = "1"
                 params.SESSION_ID    = sid
             end
+            local fw = getFileWriter(FULLSAVE_PENDING, true, false)
+            if fw then fw:write("SLOT=" .. ctx.slot .. "\r\n"); fw:close() end
             ManualSave.SignalBus.send("SAVE", params)
             local ms = MainScreen.instance
             if ms and ms:isVisible() then

@@ -189,6 +189,9 @@ end
 
 -- ── Events ─────────────────────────────────────────────────────────────────────
 
+local FULLSAVE_PENDING = "ManualSave_FullSavePending.txt"
+local DONE_FILE        = "ManualSave_Done.txt"
+
 Events.OnMainMenuEnter.Add(function()
     if _firstMenuEnter then
         _firstMenuEnter = false
@@ -205,6 +208,24 @@ Events.OnMainMenuEnter.Add(function()
         end
     end
     ManualSave.LoadTracker.clearSession()
+
+    -- Progress panel for full save: written before getCore():quit(), read here after Lua reload
+    local pfData = readKV(FULLSAVE_PENDING)
+    if pfData and pfData.SLOT then
+        clearFile(FULLSAVE_PENDING)
+        if ManualSave.openProgressPanel then
+            local panel = ManualSave.openProgressPanel({ label = pfData.SLOT })
+            local doneHandler
+            doneHandler = function()
+                local d = readKV(DONE_FILE)
+                if d and d.STATUS and d.STATUS ~= "PENDING" then
+                    Events.OnRenderTick.Remove(doneHandler)
+                    pcall(panel.close)
+                end
+            end
+            Events.OnRenderTick.Add(doneHandler)
+        end
+    end
 end)
 
 Events.OnGameStart.Add(function()
