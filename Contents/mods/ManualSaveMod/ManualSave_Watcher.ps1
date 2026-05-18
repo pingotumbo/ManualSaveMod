@@ -109,34 +109,64 @@ public class MSM_Win {
 "@
 [MSM_Win]::SetProcessDPIAware() | Out-Null
 
-# Clean stale lock from a previous crash (only if the recorded PID is no longer running)
+# Verify a PID belongs to an actual watcher process (not a recycled PID assigned
+# to some unrelated app after a crash). Checks process existence AND command line.
+function Test-WatcherProcess([int]$candidatePid) {
+    if (-not $candidatePid) { return $false }
+    if (-not (Get-Process -Id $candidatePid -EA SilentlyContinue)) { return $false }
+    $cmdline = $null
+    try { $cmdline = (Get-CimInstance Win32_Process -Filter "ProcessId = $candidatePid" -EA Stop).CommandLine } catch {}
+    return ($cmdline -and ($cmdline -match 'ManualSave_Watcher\.ps1'))
+}
+
+# Attempt to acquire the exclusive lock file. Returns the open FileStream on success, $null on failure.
+function Get-WatcherLock {
+    try {
+        $stream = [System.IO.File]::Open($LOCK_FILE, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)
+        $writer = New-Object System.IO.StreamWriter($stream)
+        $writer.Write($PID.ToString())
+        $writer.Flush()
+        return $stream
+    } catch {
+        return $null
+    }
+}
+
+# Clean stale lock from a previous crash. Lock is stale unless the recorded PID
+# is alive AND its command line shows it is actually running our watcher script.
 if (Test-Path $LOCK_FILE) {
     $stalePid = $null
     try { $stalePid = [int](Get-Content $LOCK_FILE -Raw -EA Stop) } catch {}
-    $staleAlive = $stalePid -and (Get-Process -Id $stalePid -EA SilentlyContinue)
-    if (-not $staleAlive) { Remove-Item $LOCK_FILE -Force -EA SilentlyContinue }
+    if (-not (Test-WatcherProcess $stalePid)) {
+        if ($stalePid) {
+            Write-Host "[ManualSave_Watcher] Cleaning stale lock (PID $stalePid is not a watcher process)"
+        }
+        Remove-Item $LOCK_FILE -Force -EA SilentlyContinue
+    }
 }
 
-# Lock file — prevent multiple watcher instances.
-# FileShare.Read allows the second instance to read the PID and raise our window.
-$lockStream = $null
-try {
-    $lockStream = [System.IO.File]::Open($LOCK_FILE, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)
-    $lockWriter = New-Object System.IO.StreamWriter($lockStream)
-    $lockWriter.Write($PID.ToString())
-    $lockWriter.Flush()
-} catch {
+# Acquire the lock. If another instance holds it, verify it is really a watcher;
+# if not (recycled PID from a crash), clean up and retry once.
+$lockStream = Get-WatcherLock
+if (-not $lockStream) {
     $existingPid = $null
     try { $existingPid = [int](Get-Content $LOCK_FILE -Raw -EA Stop) } catch {}
-    if ($existingPid -and (Get-Process -Id $existingPid -EA SilentlyContinue)) {
+    if (Test-WatcherProcess $existingPid) {
         Write-Host "[ManualSave_Watcher] Already running (PID $existingPid) - raising window..."
         try { (New-Object -ComObject WScript.Shell).AppActivate($existingPid) | Out-Null } catch {}
-    } else {
-        Write-Host "[ManualSave_Watcher] Lock conflict (stale file). Delete manually if this repeats:"
-        Write-Host "  $LOCK_FILE"
+        Start-Sleep -Seconds 3
+        exit 0
     }
-    Start-Sleep -Seconds 3
-    exit 0
+    Write-Host "[ManualSave_Watcher] Stale lock detected (PID $existingPid is not a watcher). Removing and retrying..."
+    Remove-Item $LOCK_FILE -Force -EA SilentlyContinue
+    Start-Sleep -Milliseconds 200
+    $lockStream = Get-WatcherLock
+    if (-not $lockStream) {
+        Write-Host "[ManualSave_Watcher] Could not acquire lock after cleanup. Delete manually if this repeats:"
+        Write-Host "  $LOCK_FILE"
+        Start-Sleep -Seconds 3
+        exit 0
+    }
 }
 
 $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
