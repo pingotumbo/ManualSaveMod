@@ -54,6 +54,13 @@ function ManualSave.makeSettingsPaths(parent, opts)
         getText = function() return getText("UI_MSM_Settings_BackupDefault") end,
         r=TH.DIM_R, g=TH.DIM_G, b=TH.DIM_B, a=0.9,
     })
+    cy = cy + TH.FONT_HGT_SMALL + 2 + 4
+
+    ManualSave.makeLabel(p, {
+        x=14, y=cy, w=w-28,
+        getText = function() return getText("UI_MSM_Settings_BackupRestartHint") end,
+        r=TH.DANGER_R*0.9, g=TH.DANGER_G*0.7, b=TH.DANGER_B*0.4, a=0.8,
+    })
 
     return p
 end
