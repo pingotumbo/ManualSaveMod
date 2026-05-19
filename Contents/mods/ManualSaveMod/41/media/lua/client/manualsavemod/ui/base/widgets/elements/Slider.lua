@@ -1,7 +1,7 @@
 -- UI/Base/Widgets/Elements/Slider.lua
 -- Horizontal numeric range slider with label and live value display.
 -- Drag handled via getMouseX() delta to avoid getAbsoluteX() / isLeftMouseButtonDown().
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field
 
 ManualSave = ManualSave or {}
 
@@ -42,7 +42,11 @@ function ManualSave.makeSlider(parent, opts)
         return (value - min) / (max - min)
     end
 
-    ManualSave.makePanel(parent, {
+    -- Keyboard / gamepad step. One unit per press is fine because key auto-repeat
+    -- gives smooth continuous adjustment when the user holds the arrow key.
+    local KEY_STEP = opts.keyStep or 1
+
+    local pv = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y, w=opts.w, h=ROW_H,
         bg={r=0,g=0,b=0,a=0}, border=false,
         prerender = function(pv)
@@ -73,17 +77,24 @@ function ManualSave.makeSlider(parent, opts)
             local thumbY = TRACK_Y + math.floor((TRACK_H - THUMB_H) / 2)
             pv:drawRect(thumbX, thumbY, THUMB_W, THUMB_H, 1,
                 TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            -- InputNav focus ring: drawn last so it sits on top of the slider.
+            if pv.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                for i = 0, TH2.FOCUS_BW - 1 do
+                    pv:drawRectBorder(i, i, pv.width - i*2, pv.height - i*2, 1,
+                        TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+                end
+            end
         end,
         onMouseDown = function(sp, mx, _)
             dragging     = true
-            downAbsX     = getMouseX()
+            downAbsX     = tonumber(getMouseX()) or 0
             downPanelX   = mx
             value        = xToValue(sp.width, mx)
             if opts.onChange then opts.onChange(value) end
         end,
         onMouseMove = function(self2, _, _)
             if not dragging then return end
-            local panelX = downPanelX + (getMouseX() - downAbsX)
+            local panelX = downPanelX + ((tonumber(getMouseX()) or 0) - downAbsX)
             value = xToValue(self2.width, panelX)
             if opts.onChange then opts.onChange(value) end
         end,
@@ -95,6 +106,34 @@ function ManualSave.makeSlider(parent, opts)
             if opts.onRelease then opts.onRelease(value) end
         end,
     })
+
+    -- InputNav: Left/Right adjusts value when the slider is focused.
+    -- Up/Down are treated as "leave the slider" (return false → group exits).
+    -- Each adjustment fires onChange (live preview); Enter commits via onRelease.
+    pv.onArrow = function(_, direction)
+        if direction == "left" then
+            value = math.max(min, value - KEY_STEP)
+            if opts.onChange then opts.onChange(value) end
+            return true
+        elseif direction == "right" then
+            value = math.min(max, value + KEY_STEP)
+            if opts.onChange then opts.onChange(value) end
+            return true
+        end
+        return false
+    end
+    pv.onActivate = function()
+        if opts.onRelease then opts.onRelease(value) end
+    end
+
+    -- Auto-register into the parent's nav group via walk-up.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then g:add(pv) end
+    end
 
     return {
         getValue = function() return value end,

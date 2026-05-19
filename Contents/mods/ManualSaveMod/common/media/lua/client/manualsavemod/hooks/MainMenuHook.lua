@@ -71,4 +71,11 @@ Events.OnMainMenuEnter.Add(function()
     print("[ManualSaveMod] Main menu: LOAD MANUAL SAVE injected.")
 end)
 
+-- NOTE: previous attempt to monkey-patch MainScreen.onGainJoypadFocus and
+-- inject loadManualSaveOption into self.joypadButtonsY caused the entire main
+-- menu to disappear when the joypad cursor reached the entry. Reverted for now
+-- — joypad navigation of the LOAD MANUAL SAVE entry in the main menu remains
+-- an open task. To revisit, examine console.txt for the error stack when the
+-- joypad cursor moves onto a vanilla-shifted item.
+
 print("[ManualSaveMod] Hooks/MainMenuHook.lua loaded.")

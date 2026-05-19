@@ -2,7 +2,7 @@
 -- Virtualised scroll list. Renders only visible rows via a caller-supplied
 -- drawRow function. Handles mouse wheel, drag scrollbar, and click selection.
 -- Adds itself to parent automatically.
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, unused-local
 
 ManualSave = ManualSave or {}
 
@@ -16,9 +16,13 @@ ManualSave = ManualSave or {}
 --   drawRow     fun(panel, item, x, y, w, h, selected:boolean, idx:number)
 --               called for every visible row during prerender.
 --               panel is the list's ISPanel — call panel:drawText / panel:drawRect etc.
---   onSelect    fun(item, idx)?   called when user clicks a row
---   onActivate  fun(item, idx)?   called on double-click
---   bg          {r,g,b}?          override panel background (default TH.BG)
+--   onSelect      fun(item, idx)?    called on mouse single-click (side effects OK)
+--   onNavigate    fun(item, idx)?    called on keyboard arrow navigation (silent)
+--   onActivate    fun(item, idx)?    called on double-click OR Enter while focused
+--   isSelectable  fun(item):boolean? if set, items where it returns false are
+--                                    skipped by arrow nav AND ignored on mouse
+--                                    click (used by HelpNav to skip category headers)
+--   bg            {r,g,b}?           override panel background (default TH.BG)
 --
 ---@param parent ISPanel
 ---@param opts { x:number, y:number, w:number, h:number, rowH:number, items:table, drawRow:fun(panel:ISPanel,item:any,x:number,y:number,w:number,h:number,selected:boolean,idx:number), onSelect:fun(item:any,idx:number)?, onActivate:fun(item:any,idx:number)?, bg:{r:number,g:number,b:number}? }
@@ -104,6 +108,15 @@ function ManualSave.makeScrollList(parent, opts)
             self2:drawRect(sx + 2, thumbY + 1, SCROLL - 4, thumbH - 2, ta,
                 TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
         end
+
+        -- InputNav focus ring: drawn last so it sits on top of all content.
+        -- Only shown while keyboard / gamepad navigation mode is active.
+        if self2.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+            for i = 0, TH.FOCUS_BW - 1 do
+                self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                    TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+            end
+        end
     end
 
     -- Mouse wheel
@@ -127,6 +140,12 @@ function ManualSave.makeScrollList(parent, opts)
         -- Row click
         local rowIdx = math.floor((my + scrollY) / opts.rowH) + 1
         if rowIdx >= 1 and rowIdx <= #items then
+            -- Skip non-selectable rows (e.g. HelpNav category headers).
+            if opts.isSelectable then
+                local item = items[rowIdx]
+                local ok, sel = pcall(opts.isSelectable, item)
+                if ok and sel == false then return true end
+            end
             local now = getTimestampMs and getTimestampMs() or 0
             local dbl = (rowIdx == lastClickIdx) and (now - lastClickTime < 400)
             lastClickIdx  = rowIdx
@@ -164,6 +183,17 @@ function ManualSave.makeScrollList(parent, opts)
 
     if parent then parent:addChild(p) end
 
+    -- InputNav auto-register: the scroll list panel is a single navigable item
+    -- in the parent screen's nav group. Up/Down arrows are handled internally
+    -- via p.onArrow, and Enter activates the selected item via p.onActivate.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then g:add(p) end
+    end
+
     local obj = { panel = p }
 
     ---@param t table
@@ -195,6 +225,73 @@ function ManualSave.makeScrollList(parent, opts)
         scrollY = targetY
         clampScroll()
     end
+
+    -- Ensure the row at `idx` is visible (scrolls just enough if it is above/below).
+    local function ensureVisible(idx)
+        local top    = (idx - 1) * opts.rowH
+        local bottom = top + opts.rowH
+        if top < scrollY then scrollY = top
+        elseif bottom > scrollY + opts.h then scrollY = bottom - opts.h
+        end
+        clampScroll()
+    end
+
+    -- Returns true if the row at `idx` should accept selection / activation.
+    -- Honors opts.isSelectable (default: every row is selectable).
+    local function isSelectable(idx)
+        if not opts.isSelectable then return true end
+        local item = items[idx]
+        if not item then return false end
+        local ok, sel = pcall(opts.isSelectable, item)
+        return ok and (sel ~= false)
+    end
+
+    -- Move selection by `delta` with wrap-around at both ends, skipping
+    -- non-selectable rows (e.g. category headers). Scrolls if needed and fires
+    -- onNavigate. Mouse single-click fires onSelect via the onMouseDown handler.
+    local function moveSelection(delta)
+        if #items == 0 then return end
+        local step = (delta > 0) and 1 or -1
+        local start
+        if selected == 0 then
+            start = (delta > 0) and 1 or #items
+        else
+            start = selected + step
+        end
+        local newSel = start
+        local safety = #items
+        while safety > 0 do
+            if newSel < 1 then newSel = #items
+            elseif newSel > #items then newSel = 1
+            end
+            if isSelectable(newSel) then break end
+            newSel = newSel + step
+            safety = safety - 1
+        end
+        if safety <= 0 then return end       -- no selectable row anywhere
+        if newSel == selected then return end
+        selected = newSel
+        ensureVisible(selected)
+        if opts.onNavigate then pcall(opts.onNavigate, items[selected], selected) end
+    end
+
+    function obj.selectNext() moveSelection(1)  end
+    function obj.selectPrev() moveSelection(-1) end
+
+    function obj.activateSelected()
+        if selected < 1 or selected > #items then return end
+        if opts.onActivate then pcall(opts.onActivate, items[selected], selected) end
+    end
+
+    -- InputNav hooks: when the list panel is the focused widget in a FocusGroup,
+    -- Up/Down move the internal selection (returning true keeps focus inside),
+    -- Left/Right fall through so the group's onExit can hand off to a sibling.
+    p.onArrow = function(_, direction)
+        if direction == "up"   then moveSelection(-1); return true end
+        if direction == "down" then moveSelection(1);  return true end
+        return false
+    end
+    p.onActivate = obj.activateSelected
 
     return obj
 end

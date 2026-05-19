@@ -123,12 +123,28 @@ function ManualSave.makeToolbar(parent, opts)
                 end
             end
 
+            -- InputNav focus background tint
+            local showFocus = self2.isFocused
+                and ManualSave.InputNav and ManualSave.InputNav.keyboardActive
+            if showFocus then
+                self2:drawRect(0, 0, self2.width, self2.height,
+                    TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
+            end
+
             local bA = alpha
             local bR, bG, bB = TH.LINE_R, TH.LINE_G, TH.LINE_B
             if isActive then
                 bR, bG, bB = TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B
             end
             self2:drawRectBorder(0, 0, self2.width, self2.height, bA, bR, bG, bB)
+
+            -- InputNav focus ring on top of the normal border
+            if showFocus then
+                for i = 0, TH.FOCUS_BW - 1 do
+                    self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                        TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+                end
+            end
 
             local tR = isActive and TH.ACCENT_R or TH.MUTED_R
             local tG = isActive and TH.ACCENT_G or TH.MUTED_G
@@ -153,12 +169,31 @@ function ManualSave.makeToolbar(parent, opts)
             end
         end
 
+        -- Expose activate so InputNav's FocusGroup:activate fires the click handler.
+        btn.onActivate = handleClick
+
         p:addChild(btn)
         btnMap[id] = btn
         cx = cx + btnW + gap
     end
 
     if parent then parent:addChild(p) end
+
+    -- InputNav auto-register: after the toolbar is attached to its parent, walk
+    -- up the parent chain to find the nearest nav group and add every button to
+    -- it in visual L-R order. opts.focusGroup overrides; false skips entirely.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then
+            for _, item in ipairs(opts.items) do
+                local btn = btnMap[item.id]
+                if btn then g:add(btn) end
+            end
+        end
+    end
 
     local obj = { panel = p, width = math.max(opts.w, totalW) }
 

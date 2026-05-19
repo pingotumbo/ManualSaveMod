@@ -5,7 +5,7 @@
 --                        for destructive actions (delete, load-with-flags)
 --   openNameInputDialog — non-aggressive popup (transparent overlay, closes on
 --                         click outside) for rename / export-as operations
----@diagnostic disable: undefined-global, undefined-doc-name, inject-field
+---@diagnostic disable: undefined-global, undefined-doc-name, inject-field, undefined-field
 
 ManualSave = ManualSave or {}
 
@@ -83,29 +83,45 @@ function ManualSave.openConfirmDialog(opts)
     local btnY = H - 38
     local btnH = TH.BUTTON_HGT
 
-    ManualSave.makeButton(p, {
+    -- The dialog's nav was auto-installed by makeModalPanel. Buttons added below
+    -- auto-register into it via parent walk-up; we only need to set the default
+    -- focus on Confirm so Enter activates the primary action immediately.
+
+    -- Confirm button (right side, visually). Created first so visual layout is correct;
+    -- registered explicitly into the group below in the right L-R focus order.
+    local confirmObj = ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD),
         y = btnY,
         w = btnW, h = btnH,
         label = opts.confirm or getText("UI_MSM_Dialog_BtnConfirm"),
         style = opts.danger and "danger" or "primary",
+        focusGroup = false,  -- registered manually below for correct L-R order
         onClick = function()
             d.close()
             if opts.onConfirm then pcall(opts.onConfirm) end
         end,
     })
 
-    ManualSave.makeButton(p, {
+    local cancelObj = ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD) * 2 - TH.GAP,
         y = btnY,
         w = btnW, h = btnH,
         label = opts.cancel or getText("UI_MSM_Common_BtnCancel"),
         style = "normal",
+        focusGroup = false,
         onClick = function()
             d.close()
             if opts.onCancel then pcall(opts.onCancel) end
         end,
     })
+
+    -- Register in visual left-to-right order and focus Confirm by default.
+    local btnGroup = p._inputNavGroup
+    if btnGroup then
+        btnGroup:add(cancelObj.btn)
+        btnGroup:add(confirmObj.btn)
+        btnGroup:setFocus(confirmObj.btn)
+    end
 
     if opts.helpSection then
         ManualSave.makeButton(p, {
@@ -186,56 +202,77 @@ function ManualSave.openNameInputDialog(opts)
         r = 0.90, g = 0.25, b = 0.22, a = 1,
     })
 
-    local ti = ManualSave.makeTextInput(p, {
+    -- Forward declare so the shared submit function can reference both before
+    -- they exist; Lua captures the variables, not their current values.
+    local ti, confirmObj
+    local function doSubmit()
+        local name = ti.getValue()
+        if opts.validate then
+            local err = opts.validate(name)
+            if err then
+                errMsg = err
+                return
+            end
+        end
+        d.close()
+        if opts.onConfirm and name ~= "" then
+            pcall(opts.onConfirm, name)
+        end
+    end
+
+    ti = ManualSave.makeTextInput(p, {
         x = TH.PAD,
         y = inputY,
         w = W - TH.PAD * 2,
         h = TH.BUTTON_HGT,
         placeholder = opts.placeholder or "",
         value = opts.value or "",
+        -- Enter in the text input submits (PZ may consume the key before our
+        -- global handler can route it to the dialog's Confirm button).
+        onCommandEntered = doSubmit,
         onChange = opts.validate and function(text)
             errMsg = opts.validate(text)
         end or nil,
     })
 
-    ManualSave.makeButton(p, {
+    -- Nav was auto-installed by makePopupPanel. Buttons created below use
+    -- focusGroup=false and are manually added in the right L-R focus order;
+    -- the TextInput above auto-registers itself so Tab can move to/from it.
+    confirmObj = ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD),
         y = btnY,
         w = btnW, h = TH.BUTTON_HGT,
         label = opts.confirm or "OK",
         style = "primary",
-        onClick = function()
-            local name = ti.getValue()
-            if opts.validate then
-                local err = opts.validate(name)
-                if err then
-                    errMsg = err
-                    return
-                end
-            end
-            d.close()
-            if opts.onConfirm and name ~= "" then
-                pcall(opts.onConfirm, name)
-            end
-        end,
+        focusGroup = false,
+        onClick = doSubmit,
     })
 
-    ManualSave.makeButton(p, {
+    local cancelObj = ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD) * 2 - TH.GAP,
         y = btnY,
         w = btnW, h = TH.BUTTON_HGT,
         label = getText("UI_MSM_Common_BtnCancel"),
         style = "normal",
+        focusGroup = false,
         onClick = function()
             d.close()
         end,
     })
+
+    local btnGroup = p._inputNavGroup
+    if btnGroup then
+        btnGroup:add(cancelObj.btn)
+        btnGroup:add(confirmObj.btn)
+        btnGroup:setFocus(confirmObj.btn)
+    end
 
     if opts.helpSection then
         ManualSave.makeButton(p, {
             x = W - TH.PAD - 22, y = TH.PAD - 2,
             w = 22, h = 22,
             label = "?", style = "normal",
+            focusGroup = false,
             onClick = function()
                 if ManualSave.openHelpScreen then ManualSave.openHelpScreen(opts.helpSection) end
             end,
@@ -243,6 +280,9 @@ function ManualSave.openNameInputDialog(opts)
     end
 
     d.open()
+    -- Auto-focus the text input so the user can type the name immediately
+    -- (Enter still triggers Confirm via the focused button in nav).
+    if ti and ti.focus then pcall(ti.focus) end
     return d
 end
 
@@ -283,30 +323,43 @@ function ManualSave.openFullSaveDialog(opts)
     local returnX  = W - TH.PAD - returnW
     local exitX    = returnX - TH.GAP - exitW
 
-    ManualSave.makeButton(p, {
+    -- Nav was auto-installed by makeModalPanel. Buttons created below use
+    -- focusGroup=false and are registered manually in visual L-R order.
+    local cancelObj = ManualSave.makeButton(p, {
         x=TH.PAD, y=btnY, w=cancelW, h=btnH,
         label=cancelLabel, style="normal",
+        focusGroup = false,
         onClick=function()
             d.close()
             if opts.onCancel then pcall(opts.onCancel) end
         end,
     })
-    ManualSave.makeButton(p, {
+    local exitObj = ManualSave.makeButton(p, {
         x=exitX, y=btnY, w=exitW, h=btnH,
         label=exitLabel, style="danger",
+        focusGroup = false,
         onClick=function()
             d.close()
             if opts.onExit then pcall(opts.onExit) end
         end,
     })
-    ManualSave.makeButton(p, {
+    local returnObj = ManualSave.makeButton(p, {
         x=returnX, y=btnY, w=returnW, h=btnH,
         label=returnLabel, style="primary",
+        focusGroup = false,
         onClick=function()
             d.close()
             if opts.onReturn then pcall(opts.onReturn) end
         end,
     })
+
+    local btnGroup = p._inputNavGroup
+    if btnGroup then
+        btnGroup:add(cancelObj.btn)
+        btnGroup:add(exitObj.btn)
+        btnGroup:add(returnObj.btn)
+        btnGroup:setFocus(returnObj.btn)
+    end
 
     d.open()
 end

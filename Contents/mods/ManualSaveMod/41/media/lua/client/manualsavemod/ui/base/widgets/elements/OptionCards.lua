@@ -1,7 +1,7 @@
 -- UI/Base/Widgets/Elements/OptionCards.lua
 -- Horizontal row of selectable cards, each with an optional image preview and a title bar.
 -- Selection state is read live via getValue() so the display stays in sync.
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field
 
 ManualSave = ManualSave or {}
 
@@ -23,12 +23,48 @@ function ManualSave.makeOptionCards(parent, opts)
     local gap      = n > 1 and TH.GAP or 0
     local cardW    = n > 0 and math.floor((opts.w - gap * (n - 1)) / n) or opts.w
 
+    -- Cursor used by keyboard navigation: index of the card currently being
+    -- "considered" via arrow keys (separate from the selected value).
+    -- Defaults to the index of the currently selected card so the cursor lines
+    -- up with the user's current choice when the row first gains focus.
+    local function indexOfSelected()
+        if not opts.getValue then return 1 end
+        local cur = opts.getValue()
+        for i, cd in ipairs(cards) do
+            if cd.value == cur then return i end
+        end
+        return 1
+    end
+    local focusIdx = indexOfSelected()
+
+    -- Invisible row container that owns the keyboard focus. Registered into the
+    -- parent's nav group; child card panels are positioned inside it. This lets
+    -- the entire row receive a single focus indicator that surrounds the cursor
+    -- card, while keeping the individual card panels independent for mouse hit.
+    local row = ManualSave.makePanel(parent, {
+        x=opts.x or 0, y=opts.y, w=opts.w, h=cardH,
+        bg={r=0,g=0,b=0,a=0}, border=false,
+        prerender = function(pv)
+            if not pv.isFocused or not (ManualSave.InputNav and ManualSave.InputNav.keyboardActive) then
+                return
+            end
+            -- Draw focus ring around the card the keyboard cursor is on.
+            local idx = math.max(1, math.min(n, focusIdx))
+            local cx  = (idx - 1) * (cardW + gap)
+            local TH2 = ManualSave.Theme
+            for i = 0, TH2.FOCUS_BW - 1 do
+                pv:drawRectBorder(cx + i, i, cardW - i*2, cardH - i*2, 1,
+                    TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+            end
+        end,
+    })
+
     for i, cd in ipairs(cards) do
         local cardX = (i - 1) * (cardW + gap)
         local val   = cd.value
         local tex   = cd.tex
-        ManualSave.makePanel(parent, {
-            x=(opts.x or 0) + cardX, y=opts.y, w=cardW, h=cardH,
+        ManualSave.makePanel(row, {
+            x=cardX, y=0, w=cardW, h=cardH,
             bg={r=0,g=0,b=0,a=0}, border=false,
             prerender = function(pv)
                 local TH2  = ManualSave.Theme
@@ -65,10 +101,38 @@ function ManualSave.makeOptionCards(parent, opts)
                 pv:drawRectBorder(0, 0, pv.width, pv.height, bA, bR, bG, bB)
             end,
             onMouseDown = function()
+                focusIdx = i
                 if opts.onChange then opts.onChange(val) end
                 return true
             end,
         })
+    end
+
+    -- Keyboard navigation: Left/Right move the cursor between cards.
+    -- Enter selects the card under the cursor (calls onChange).
+    -- Up/Down fall through so the focus group can hand off to a sibling widget.
+    row.onArrow = function(_, direction)
+        if direction == "left" then
+            focusIdx = math.max(1, focusIdx - 1)
+            return true
+        elseif direction == "right" then
+            focusIdx = math.min(n, focusIdx + 1)
+            return true
+        end
+        return false
+    end
+    row.onActivate = function()
+        local cd = cards[focusIdx]
+        if cd and opts.onChange then opts.onChange(cd.value) end
+    end
+
+    -- Auto-register the row in the parent's nav group via walk-up.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then g:add(row) end
     end
 
     return cardH

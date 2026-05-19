@@ -71,4 +71,35 @@ Events.OnMainMenuEnter.Add(function()
     print("[ManualSaveMod] Main menu: LOAD MANUAL SAVE injected.")
 end)
 
+-- Joypad / controller navigation integration.
+-- PZ MainScreen builds its keyboard/joypad nav list (self.joypadButtonsY) from
+-- a hardcoded set of options inside MainScreen:onGainJoypadFocus. Our injected
+-- option is not in that list, so it would be skipped when navigating with the
+-- controller. We monkey-patch the method to append our entry to the list right
+-- before the EXIT row, so it sits in the same spot as it is rendered visually.
+local _origOnGainJoypadFocus = nil
+Events.OnMainMenuEnter.Add(function()
+    if _origOnGainJoypadFocus then return end
+    if not MainScreen or not MainScreen.onGainJoypadFocus then return end
+    _origOnGainJoypadFocus = MainScreen.onGainJoypadFocus
+    function MainScreen:onGainJoypadFocus(joypadData)
+        _origOnGainJoypadFocus(self, joypadData)
+        local opt = self.loadManualSaveOption
+        if not opt then return end
+        local visible = true
+        pcall(function() visible = opt:isVisible() end)
+        if not visible then return end
+        pcall(function() opt:setJoypadFocused(false) end)
+        -- Insert before EXIT so the visual order matches the nav order.
+        for i, v in ipairs(self.joypadButtonsY or {}) do
+            if v[1] == self.exitOption then
+                table.insert(self.joypadButtonsY, i, { opt })
+                return
+            end
+        end
+        -- Fallback: append at the end if EXIT could not be found.
+        table.insert(self.joypadButtonsY, { opt })
+    end
+end)
+
 print("[ManualSaveMod] Hooks/MainMenuHook.lua loaded.")

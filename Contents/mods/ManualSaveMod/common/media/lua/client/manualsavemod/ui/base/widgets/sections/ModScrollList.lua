@@ -60,7 +60,15 @@ function ManualSave.makeModScrollList(parent, opts)
         items   = {},
         bg      = { r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
         drawRow = drawModRow,
+        -- Mouse click toggles the checkbox (existing behaviour).
         onSelect = function(item, _)
+            item.checked = not item.checked
+            ManualSave.EditModsScreen.refreshList()
+        end,
+        -- Enter (or double-click) on the focused row toggles too — keyboard
+        -- arrow navigation alone does NOT toggle (handled by separate onNavigate
+        -- which we deliberately leave nil so arrow keys are silent).
+        onActivate = function(item, _)
             item.checked = not item.checked
             ManualSave.EditModsScreen.refreshList()
         end,

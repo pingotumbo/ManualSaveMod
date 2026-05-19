@@ -822,16 +822,9 @@ function ManualSave.openHelpScreen(section)
 
     local d  = ManualSave.makeFloatingPanel({
         w=W, h=H, title=getText("UI_MSM_Help_Title"),
-        subtitle = navSubtitle(),
-        onClose  = function() ManualSave.closeHelpScreen() end,
-        render   = function(self2)
-            local TH2 = ManualSave.Theme
-            local bw  = 2
-            self2:drawRect(0, 0, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-            self2:drawRect(0, self2.height-bw, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-            self2:drawRect(0, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-            self2:drawRect(self2.width-bw, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-        end,
+        subtitle    = navSubtitle(),
+        borderStyle = "accent",   -- solid 2px accent border (HelpScreen visual identity)
+        onClose     = function() ManualSave.closeHelpScreen() end,
     })
     _screen  = d
     local cy = d.titleH

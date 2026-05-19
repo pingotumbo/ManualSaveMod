@@ -93,10 +93,78 @@ function ManualSave.makeCoverPanel(parent, opts)
 
     local obj = { panel = panel }
 
+    -- InputNav integration: cover panels SHARE the surrounding screen's nav
+    -- group rather than isolating, so widgets that remain visible under the
+    -- cover (e.g. the LoadScreen footer buttons that MoreScreen keeps showing)
+    -- stay reachable by keyboard alongside the cover's own widgets.
+    --
+    -- Three pieces:
+    --   1. Expose the parent group on the cover so child widgets walking up
+    --      via findNavGroup land here and register into the parent group.
+    --   2. Snapshot the parent group size; on destroy, remove every widget
+    --      added during the cover's lifetime (avoids stale references after
+    --      the cover sub-tree is gone).
+    --   3. Temporarily override the parent manager's onCancel so Esc closes
+    --      the cover rather than the surrounding screen; restored on destroy.
+    local IN           = ManualSave.InputNav
+    local parentGroup  = IN and IN.findNavGroup(parent)   or nil
+    local parentMgr    = IN and IN.findNavManager(parent) or nil
+    local initialCount = parentGroup and #parentGroup.items or 0
+    panel._inputNavGroup = parentGroup
+    panel._inputNav      = parentMgr
+
+    local prevOnCancel = nil
+    if parentMgr then
+        prevOnCancel = parentMgr.onCancel
+        parentMgr.onCancel = function() obj.destroy() end
+    end
+
+    -- Spatial auto-hide: hide every nav-registered widget that overlaps the
+    -- cover's bounding box. Avoids hardcoding "hideTargets" lists in callers —
+    -- the cover panel just claims its rectangle and any pre-existing navigable
+    -- widget under it is hidden automatically. Widgets OUTSIDE the cover area
+    -- (e.g. footer buttons below it) can still be hidden via opts.hideTargets.
+    local autoPrev = {}
+    if parentGroup then
+        local cx = tonumber(opts.x) or 0
+        local cy = tonumber(opts.y) or 0
+        local cw = tonumber(opts.w) or 0
+        local ch = tonumber(opts.h) or 0
+        for _, w in ipairs(parentGroup.items) do
+            local inCover = false
+            pcall(function()
+                local wx = tonumber(w:getX())     or 0
+                local wy = tonumber(w:getY())     or 0
+                local ww = tonumber(w:getWidth()) or 0
+                local wh = tonumber(w:getHeight()) or 0
+                inCover = wx < cx + cw and wx + ww > cx
+                      and wy < cy + ch and wy + wh > cy
+            end)
+            if inCover then
+                local ok, v = pcall(function() return w:isVisible() end)
+                if ok and v then
+                    autoPrev[w] = true
+                    pcall(function() w:setVisible(false) end)
+                end
+            end
+        end
+    end
+
     function obj.destroy()
+        if parentMgr then parentMgr.onCancel = prevOnCancel end
+        if parentGroup then
+            while #parentGroup.items > initialCount do
+                local last = parentGroup.items[#parentGroup.items]
+                parentGroup:remove(last)
+            end
+        end
         if parent then pcall(function() parent:removeChild(panel) end) end
         for i, t in ipairs(targets) do
             if t and prevVis[i] then pcall(function() t:setVisible(true) end) end
+        end
+        -- Restore spatially auto-hidden widgets
+        for w, _ in pairs(autoPrev) do
+            pcall(function() w:setVisible(true) end)
         end
     end
 

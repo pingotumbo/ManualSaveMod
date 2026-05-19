@@ -89,6 +89,13 @@ function ManualSave.makeScreenPanel(opts)
     outer.onKeyRelease = keyHandler
     inner.onKeyRelease = keyHandler
 
+    -- InputNav: auto-create a focus manager + group for this screen. Child
+    -- widgets created via makeButton/makeToolbar/etc. with no explicit
+    -- focusGroup will walk up the parent chain and register themselves here.
+    if ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
+        ManualSave.InputNav.installPanelNav(inner, obj, { id="screen" })
+    end
+
     if opts.onClose then obj.onClose(opts.onClose) end
 
     return obj

@@ -1,6 +1,6 @@
 -- UI/Base/Widgets/Sections/SettingsWidgets.lua
 -- Shared row widgets used across Settings sections.
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field
 
 ManualSave = ManualSave or {}
 
@@ -16,7 +16,7 @@ function ManualSave.makeSettingsCheckRow(parent, opts)
     local textX = cbX + cbSz + 8
     local label = opts.label or ""
     local desc  = opts.desc  or ""
-    return ManualSave.makePanel(parent, {
+    local row = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y, w=opts.w, h=ROW_H,
         bg={ r=0, g=0, b=0, a=0 }, border=false,
         prerender = function(fc)
@@ -26,6 +26,12 @@ function ManualSave.makeSettingsCheckRow(parent, opts)
             pcall(function() over = fc:isMouseOver() end)
             if over then
                 fc:drawRect(0, 0, fc.width, fc.height - 1, 0.04, 1, 1, 1)
+            end
+            -- InputNav focus tint: drawn before the bottom separator so it
+            -- covers the row area without overwriting the divider line.
+            if fc.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                fc:drawRect(0, 0, fc.width, fc.height - 1,
+                    TH2.FOCUS_BG_A, TH2.FOCUS_BG_R, TH2.FOCUS_BG_G, TH2.FOCUS_BG_B)
             end
             fc:drawRect(0, fc.height - 1, fc.width, 1,
                 0.3, TH2.LINE_R, TH2.LINE_G, TH2.LINE_B)
@@ -39,12 +45,30 @@ function ManualSave.makeSettingsCheckRow(parent, opts)
             fc:drawText(label, textX, 4, tR, tG, tB, tA, UIFont.Small)
             fc:drawText(desc, textX, 4 + TH2.FONT_HGT_SMALL + 3,
                 TH2.DIM_R, TH2.DIM_G, TH2.DIM_B, 0.65, UIFont.Small)
+            -- Focus ring (sits on top of everything else in the row)
+            if fc.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                for i = 0, TH2.FOCUS_BW - 1 do
+                    fc:drawRectBorder(i, i, fc.width - i*2, fc.height - i*2, 1,
+                        TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+                end
+            end
         end,
         onMouseDown = function()
             if opts.onToggle then opts.onToggle() end
             return true
         end,
     })
+    -- Keyboard: Enter (via onActivate) toggles the checkbox. The row is
+    -- registered automatically into the parent's nav group.
+    row.onActivate = opts.onToggle
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then g:add(row) end
+    end
+    return row
 end
 
 -- Row with title on the left and a segmented toolbar on the right.

@@ -9,7 +9,7 @@
 --   ManualSave.UI.registerElement("bat_required", handle, true)     -- enabled  when condition false (invert)
 --   ManualSave.UI.clearGroup("bat_required")                        -- call when screen closes
 --   ManualSave.UI.evalConditions()                                  -- called by SignalBus poll
----@diagnostic disable: undefined-global
+---@diagnostic disable: undefined-global, undefined-field, undefined-doc-name
 
 ManualSave    = ManualSave or {}
 ManualSave.UI = ManualSave.UI or {}
@@ -48,8 +48,29 @@ function ManualSave.UI.clearGroup(groupName)
     _groups[groupName] = nil
 end
 
--- Evaluates all group conditions and applies enabled/disabled state to members.
--- Called by SignalBus.poll() every ~2 s alongside the heartbeat check.
+-- Conditional widget registry (per-widget enableIf / visibleIf callbacks).
+-- Used by widget factories (makeButton etc.) to auto-bind a widget's enabled
+-- and visible state to a per-instance predicate, without the screen having to
+-- do manual setEnabled/setVisible calls.
+local _conditional = {}
+
+---@param handle  table   widget wrapper exposing setEnabled / setVisible
+---@param opts    { enableIf:fun():boolean?, visibleIf:fun():boolean? }
+function ManualSave.UI.registerConditional(handle, opts)
+    if not handle or not opts then return end
+    if not opts.enableIf and not opts.visibleIf then return end
+    table.insert(_conditional, {
+        handle    = handle,
+        enableIf  = opts.enableIf,
+        visibleIf = opts.visibleIf,
+    })
+end
+
+-- Evaluates all group conditions and applies enabled/disabled state to members,
+-- then evaluates per-widget enableIf / visibleIf for conditionally-registered
+-- widgets. Dead entries (where set calls fail) are pruned.
+-- Called by SignalBus.poll() every ~2 s alongside the heartbeat check, and
+-- manually by callers after state changes that need immediate refresh.
 function ManualSave.UI.evalConditions()
     for _, group in pairs(_groups) do
         if group.condition then
@@ -62,6 +83,27 @@ function ManualSave.UI.evalConditions()
             end
         end
     end
+
+    local dead = {}
+    for i, c in ipairs(_conditional) do
+        local alive = true
+        if c.enableIf and c.handle.setEnabled then
+            local ok, v = pcall(c.enableIf)
+            if ok then
+                local ok2 = pcall(c.handle.setEnabled, v and true or false)
+                if not ok2 then alive = false end
+            end
+        end
+        if alive and c.visibleIf and c.handle.setVisible then
+            local ok, v = pcall(c.visibleIf)
+            if ok then
+                local ok2 = pcall(c.handle.setVisible, v and true or false)
+                if not ok2 then alive = false end
+            end
+        end
+        if not alive then table.insert(dead, i) end
+    end
+    for i = #dead, 1, -1 do table.remove(_conditional, dead[i]) end
 end
 
 print("[ManualSaveMod] UI/Base/Config/Groups.lua loaded.")

@@ -58,10 +58,16 @@ function ManualSave.openLoadScreen(fromMainMenu)
 
     local p = d.panel
 
+    -- InputNav is created automatically by makeScreenPanel. Access the auto-built
+    -- group via p._inputNavGroup; every makeButton / makeToolbar / makeScrollList /
+    -- makeTextInput called below with `p` as the parent will walk up the parent
+    -- chain and register itself into this group automatically.
+    ManualSave.LoadScreen._mainGroup = p._inputNavGroup
+
     -- Title bar + Help button
     ManualSave.makeLoadHeader(p, { w=PW, h=titleH })
 
-    -- Left column: sort toolbar + search + scrollable save list
+    -- Left column: sort toolbar + search + scrollable save list (all auto-register)
     ManualSave.makeSaveList(p, { contentY=contentY, contentH=contentH, listW=LEFT_W })
 
     -- Right column: thumbnail + detail info + inline rename + action buttons
@@ -99,7 +105,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
             x=importX, y=footerY, w=importW, h=TH.BUTTON_HGT,
             label=getText("UI_MSM_Load_BtnImport"), style="accent",
             groups={"bat_required"},
-            onClick = function()
+                onClick = function()
                 if ManualSave.SignalBus.isBatAlive() == false then return end
                 ManualSave.openImportScreen()
             end,
@@ -126,10 +132,20 @@ function ManualSave.openLoadScreen(fromMainMenu)
         end,
     })
 
-    -- "?" tutorial-hook button: shown only when watcher is offline (not during save progress)
+    -- "?" tutorial-hook button: shown only when the watcher is offline (with
+    -- the warning surfaced) or while a save is in progress. visibleIf binds
+    -- this to the live state automatically — no need for screen-side setVisible
+    -- calls in updateWarnArea, and the button is skipped in keyboard nav while
+    -- hidden (isNavigable checks isVisible).
     ManualSave.LoadScreen._infoBtn = ManualSave.makeButton(p, {
         x=infoX, y=footerY, w=26, h=TH.BUTTON_HGT,
         label=getText("UI_MSM_Common_BtnHelp"), style="normal",
+        visibleIf = function()
+            local busy       = ManualSave._progressActive == true
+            local offline    = ManualSave.SignalBus.isBatAlive() == false
+            local warnHidden = ManualSave.Config.get("SHOW_WATCHER_WARN") == "0"
+            return busy or (offline and not warnHidden)
+        end,
         onClick = function()
             if ManualSave.openHelpScreen then
                 local section = ManualSave._progressActive and "savebusy" or "watcher"
@@ -137,7 +153,6 @@ function ManualSave.openLoadScreen(fromMainMenu)
             end
         end,
     })
-    ManualSave.LoadScreen._infoBtn.btn:setVisible(false)
 
     -- Warning label: text and visibility set by updateWarnArea()
     local warnX     = infoX + 26 + TH.GAP
@@ -172,6 +187,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
         ManualSave.LoadScreen._state     = nil
         ManualSave.LoadScreen._infoBtn   = nil
         ManualSave.LoadScreen._warnLabel = nil
+        ManualSave.LoadScreen._mainGroup = nil
         ManualSave.UI.clearGroup("bat_required")
         ManualSave.closeMoreScreen()
         if ManualSave.closeImportScreen  then ManualSave.closeImportScreen()  end
@@ -187,8 +203,10 @@ function ManualSave.openLoadScreen(fromMainMenu)
     d.open()
 end
 
--- Updates the warning label and help-button visibility based on current state.
--- Called by the bat_required group handler whenever conditions change.
+-- Updates the warning label state. The "?" button's visibility is handled
+-- automatically by its visibleIf binding; here we only update the label's
+-- visible state + text (no visibleIf since label rendering depends on text
+-- which is itself driven by the same condition).
 function ManualSave.LoadScreen.updateWarnArea()
     local ls = ManualSave.LoadScreen
     if not ls._screen or not ls._warnLabel then return end
@@ -197,7 +215,6 @@ function ManualSave.LoadScreen.updateWarnArea()
     local warnHidden = ManualSave.Config.get("SHOW_WATCHER_WARN") == "0"
     local show       = busy or (offline and not warnHidden)
     ls._warnLabel.setVisible(show)
-    ls._infoBtn.btn:setVisible(show)
     ls._warnLabel.setText(busy
         and getText("UI_MSM_Common_WarnBusy")
         or  getText("UI_MSM_Common_WarnOffline"))

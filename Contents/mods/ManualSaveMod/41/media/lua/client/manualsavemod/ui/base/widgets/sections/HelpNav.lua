@@ -55,14 +55,12 @@ function ManualSave.makeHelpNav(parent, opts)
                 panel:drawRect(x, y+h-1, w, 1, 1, TH.LINE_R, TH.LINE_G, TH.LINE_B)
             end
         end,
-        onSelect   = function(item)
-            if item._cat then return end
-            opts.onNavigate(item.id)
-        end,
-        onActivate = function(item)
-            if item._cat then return end
-            opts.onNavigate(item.id)
-        end,
+        -- Category header rows (item._cat = true) are decorative and not selectable.
+        -- ScrollList skips them in arrow navigation and ignores them on mouse click.
+        isSelectable = function(item) return not item._cat end,
+        onSelect     = function(item) opts.onNavigate(item.id) end,
+        onNavigate   = function(item) opts.onNavigate(item.id) end,
+        onActivate   = function(item) opts.onNavigate(item.id) end,
     })
     navList.scrollToIndex(initIdx)
 

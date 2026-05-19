@@ -2,7 +2,7 @@
 -- Interactive HUD position picker: click-to-place schematic, 3x3 compass preset grid,
 -- snap guides, coordinates readout, and a Hide toggle.
 -- All position state is persisted immediately via Config keys.
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field
 
 ManualSave = ManualSave or {}
 
@@ -93,8 +93,8 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         bg={ r=0, g=0, b=0, a=0 }, border=false,
     })
 
-    -- Schematic (click-to-place + drag)
-    ManualSave.makePanel(combo, {
+    -- Schematic (click-to-place + drag, keyboard arrows nudge the indicator)
+    local schematic = ManualSave.makePanel(combo, {
         x=0, y=0, w=schW, h=SCH_H,
         bg={ r=TH.BG_R * 0.55, g=TH.BG_G * 0.50, b=TH.BG_B * 0.45, a=1 }, border=false,
         prerender = function(pv)
@@ -108,8 +108,8 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                 else
                     local ax, ay = 0, 0
                     pcall(function() ax = pv:getAbsoluteX(); ay = pv:getAbsoluteY() end)
-                    local nx = math.max(0.02, math.min(0.98, (getMouseX() - ax) / pv.width))
-                    local ny = math.max(0.02, math.min(0.98, (getMouseY() - ay) / pv.height))
+                    local nx = math.max(0.02, math.min(0.98, ((tonumber(getMouseX()) or 0) - ax) / pv.width))
+                    local ny = math.max(0.02, math.min(0.98, ((tonumber(getMouseY()) or 0) - ay) / pv.height))
                     posX, posY = applySnap(nx, ny)
                 end
             end
@@ -124,32 +124,39 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                     math.floor((pv.width  - tw) / 2),
                     math.floor((pv.height - TH2.FONT_HGT_SMALL) / 2),
                     TH2.DIM_R, TH2.DIM_G, TH2.DIM_B, 0.55, UIFont.Small)
-                return
+            else
+                -- Minimap: moodle strip, player dot, hotbar
+                pv:drawRect(pv.width - 9, 3, 6, 28, 0.12, 1, 1, 1)
+                pv:drawRect(math.floor(pv.width/2)-2, math.floor(pv.height/2)-2, 4, 4, 0.20, 1, 1, 1)
+                local hbW = math.floor(pv.width * 0.38)
+                local hbX = math.floor((pv.width - hbW) / 2)
+                pv:drawRectBorder(hbX, pv.height - 7, hbW, 4, 0.22, TH2.DIM_R, TH2.DIM_G, TH2.DIM_B)
+
+                -- Snap guides
+                if snapVX then
+                    pv:drawRect(math.floor(snapVX * pv.width), 0, 1, pv.height, 0.5, 0.30, 0.68, 0.26)
+                end
+                if snapHY then
+                    pv:drawRect(0, math.floor(snapHY * pv.height), pv.width, 1, 0.5, 0.30, 0.68, 0.26)
+                end
+
+                -- Indicator pill
+                local IND_W, IND_H = 34, 7
+                local indX = math.max(0, math.min(pv.width  - IND_W,
+                    math.floor(posX * pv.width)  - math.floor(IND_W / 2)))
+                local indY = math.max(0, math.min(pv.height - IND_H,
+                    math.floor(posY * pv.height) - math.floor(IND_H / 2)))
+                pv:drawRect(indX, indY, IND_W, IND_H, 0.9,
+                    TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
             end
 
-            -- Minimap: moodle strip, player dot, hotbar
-            pv:drawRect(pv.width - 9, 3, 6, 28, 0.12, 1, 1, 1)
-            pv:drawRect(math.floor(pv.width/2)-2, math.floor(pv.height/2)-2, 4, 4, 0.20, 1, 1, 1)
-            local hbW = math.floor(pv.width * 0.38)
-            local hbX = math.floor((pv.width - hbW) / 2)
-            pv:drawRectBorder(hbX, pv.height - 7, hbW, 4, 0.22, TH2.DIM_R, TH2.DIM_G, TH2.DIM_B)
-
-            -- Snap guides
-            if snapVX then
-                pv:drawRect(math.floor(snapVX * pv.width), 0, 1, pv.height, 0.5, 0.30, 0.68, 0.26)
+            -- InputNav focus ring (drawn last so it sits on top)
+            if pv.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                for i = 0, TH2.FOCUS_BW - 1 do
+                    pv:drawRectBorder(i, i, pv.width - i*2, pv.height - i*2, 1,
+                        TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+                end
             end
-            if snapHY then
-                pv:drawRect(0, math.floor(snapHY * pv.height), pv.width, 1, 0.5, 0.30, 0.68, 0.26)
-            end
-
-            -- Indicator pill
-            local IND_W, IND_H = 34, 7
-            local indX = math.max(0, math.min(pv.width  - IND_W,
-                math.floor(posX * pv.width)  - math.floor(IND_W / 2)))
-            local indY = math.max(0, math.min(pv.height - IND_H,
-                math.floor(posY * pv.height) - math.floor(IND_H / 2)))
-            pv:drawRect(indX, indY, IND_W, IND_H, 0.9,
-                TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
         end,
         onMouseDown = function(sp, mx, my)
             if hidden then return end
@@ -170,6 +177,20 @@ function ManualSave.makeHudPositionPicker(parent, opts)
             end
         end,
     })
+    -- Keyboard: arrows nudge the indicator (3% per press, smooth with key auto-repeat).
+    schematic.onArrow = function(_, direction)
+        if hidden then return false end
+        local STEP = 0.03
+        if direction == "up"    then posY = math.max(0.02, posY - STEP)
+        elseif direction == "down"  then posY = math.min(0.98, posY + STEP)
+        elseif direction == "left"  then posX = math.max(0.02, posX - STEP)
+        elseif direction == "right" then posX = math.min(0.98, posX + STEP)
+        else return false
+        end
+        snapVX, snapHY = nil, nil
+        savePosXY()
+        return true
+    end
 
     -- Coordinates readout below schematic
     ManualSave.makePanel(combo, {
@@ -203,21 +224,62 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         end,
     })
 
-    -- Compass 3x3 grid
+    -- Compass 3x3 grid wrapped in a container so the whole grid is a single
+    -- nav item with an internal cursor (row, col). Arrow keys move the cursor
+    -- between cells; Enter applies the cursor's anchor preset.
     local gridY = TH.FONT_HGT_SMALL + 2
+    local gridW = 3 * cellW + 2 * CELL_GAP
+    local gridH = 3 * cellH + 2 * CELL_GAP
+    local cursorRow, cursorCol = 1, 1   -- 1-based; start at centre cell
+
+    -- Initialise cursor to point at the currently-active anchor when possible.
+    do
+        local active = findAnchor()
+        for r = 1, 3 do
+            for c = 1, 3 do
+                if anchorGrid[r] and anchorGrid[r][c] == active then
+                    cursorRow, cursorCol = r, c
+                end
+            end
+        end
+    end
+
+    local function applyAnchorAt(r, c)
+        local aid = anchorGrid[r] and anchorGrid[r][c]
+        if not aid then return end
+        for _, a in ipairs(anchors) do
+            if a.id == aid then
+                posX, posY = a.x, a.y
+                hidden = false; snapVX = nil; snapHY = nil
+                ManualSave.Config.set(opts.configKeyX, string.format("%.3f", posX))
+                ManualSave.Config.set(opts.configKeyY, string.format("%.3f", posY))
+                ManualSave.Config.set(opts.configKeyHide, "0")
+                return
+            end
+        end
+    end
+
+    local compassWrap = ManualSave.makePanel(combo, {
+        x=compassX, y=gridY, w=gridW, h=gridH,
+        bg={ r=0, g=0, b=0, a=0 }, border=false,
+    })
     for row = 0, 2 do
         for col = 0, 2 do
             local aid = anchorGrid[row + 1] and anchorGrid[row + 1][col + 1]
             if aid then
-                local cx2 = compassX + col * (cellW + CELL_GAP)
-                local cy2 = gridY    + row * (cellH + CELL_GAP)
-                local capturedId = aid
-                ManualSave.makePanel(combo, {
+                local cx2 = col * (cellW + CELL_GAP)
+                local cy2 = row * (cellH + CELL_GAP)
+                local capturedId  = aid
+                local capturedRow = row + 1
+                local capturedCol = col + 1
+                ManualSave.makePanel(compassWrap, {
                     x=cx2, y=cy2, w=cellW, h=cellH,
                     bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B, a=1 }, border=false,
                     prerender = function(pv)
                         local TH2    = ManualSave.Theme
                         local active = (findAnchor() == capturedId)
+                        local cursor = (cursorRow == capturedRow and cursorCol == capturedCol)
+                        local kbOn   = ManualSave.InputNav and ManualSave.InputNav.keyboardActive
                         local over   = false
                         pcall(function() over = pv:isMouseOver() end)
                         if active then
@@ -242,18 +304,17 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                             math.floor((pv.width  - barW) / 2),
                             math.floor((pv.height - barH) / 2),
                             barW, barH, bA, bR, bG, bB2)
-                    end,
-                    onMouseDown = function()
-                        for _, a in ipairs(anchors) do
-                            if a.id == capturedId then
-                                posX, posY = a.x, a.y
-                                hidden = false; snapVX = nil; snapHY = nil
-                                ManualSave.Config.set(opts.configKeyX, string.format("%.3f", posX))
-                                ManualSave.Config.set(opts.configKeyY, string.format("%.3f", posY))
-                                ManualSave.Config.set(opts.configKeyHide, "0")
-                                break
+                        -- Keyboard cursor highlight on the focused cell.
+                        if cursor and compassWrap.isFocused and kbOn then
+                            for i = 0, TH2.FOCUS_BW - 1 do
+                                pv:drawRectBorder(i, i, pv.width - i*2, pv.height - i*2, 1,
+                                    TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
                             end
                         end
+                    end,
+                    onMouseDown = function()
+                        cursorRow, cursorCol = capturedRow, capturedCol
+                        applyAnchorAt(capturedRow, capturedCol)
                         return true
                     end,
                 })
@@ -261,9 +322,20 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         end
     end
 
+    -- Keyboard: arrows move the internal cursor; Enter applies the anchor.
+    compassWrap.onArrow = function(_, direction)
+        if direction == "up"    then cursorRow = math.max(1, cursorRow - 1); return true
+        elseif direction == "down"  then cursorRow = math.min(3, cursorRow + 1); return true
+        elseif direction == "left"  then cursorCol = math.max(1, cursorCol - 1); return true
+        elseif direction == "right" then cursorCol = math.min(3, cursorCol + 1); return true
+        end
+        return false
+    end
+    compassWrap.onActivate = function() applyAnchorAt(cursorRow, cursorCol) end
+
     -- Hide HUD toggle button
     local hideBtnY = gridY + 3 * cellH + 2 * CELL_GAP + TH.GAP
-    ManualSave.makePanel(combo, {
+    local hideBtn = ManualSave.makePanel(combo, {
         x=compassX, y=hideBtnY, w=COMP_W, h=TH.BUTTON_HGT,
         bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B, a=1 }, border=false,
         prerender = function(pv)
@@ -296,6 +368,13 @@ function ManualSave.makeHudPositionPicker(parent, opts)
             local tB  = hidden and TH2.DANGER_B or TH2.MUTED_B
             local ty2 = math.floor((pv.height - TH2.FONT_HGT_SMALL) / 2)
             pv:drawText(lbl, dotX + dotSz + 6, ty2, tR, tG, tB, 1, UIFont.Small)
+            -- InputNav focus ring (last so it sits on top)
+            if pv.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                for i = 0, TH2.FOCUS_BW - 1 do
+                    pv:drawRectBorder(i, i, pv.width - i*2, pv.height - i*2, 1,
+                        TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+                end
+            end
         end,
         onMouseDown = function()
             hidden = not hidden
@@ -303,6 +382,26 @@ function ManualSave.makeHudPositionPicker(parent, opts)
             return true
         end,
     })
+    -- Keyboard: Enter toggles hidden.
+    hideBtn.onActivate = function()
+        hidden = not hidden
+        ManualSave.Config.set(opts.configKeyHide, hidden and "1" or "0")
+    end
+
+    -- Auto-register the three interactive zones in the parent's nav group.
+    -- Each is a separate nav item so Left/Right cycles between them naturally
+    -- and arrow keys / Enter on each behave per their own handlers.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then
+            g:add(schematic)
+            g:add(compassWrap)
+            g:add(hideBtn)
+        end
+    end
 
     return COMBO_H
 end

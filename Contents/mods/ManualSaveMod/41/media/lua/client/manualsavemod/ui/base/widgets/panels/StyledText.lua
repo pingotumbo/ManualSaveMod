@@ -1,7 +1,7 @@
 -- UI/Base/Widgets/Panels/StyledText.lua
 -- Scrollable styled-text panel. Full scroll state management (wheel + drag).
 -- Used by HelpScreen content area; exported as a generic factory.
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, need-check-nil
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, need-check-nil, inject-field
 
 ManualSave = ManualSave or {}
 
@@ -138,6 +138,14 @@ function ManualSave.makeScrollText(parent, opts)
                 self2:drawRect(sx + 2, thumbY + 1, SCROLL - 4, thumbH - 2, 0.55,
                     TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
             end
+            -- InputNav focus ring: drawn last so it sits on top of the content.
+            -- Tells the user "arrow keys scroll this panel now".
+            if self2.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                for i = 0, TH.FOCUS_BW - 1 do
+                    self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                        TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+                end
+            end
         end,
         onMouseWheel = function(_, delta)
             local lines  = expandLines(opts.getLines())
@@ -174,6 +182,36 @@ function ManualSave.makeScrollText(parent, opts)
         end,
         onMouseUp = function() sbDrag = false end,
     })
+
+    -- Keyboard scroll: when this panel is the focused widget in a FocusGroup,
+    -- Up/Down scroll the text by one line (with key auto-repeat held down it
+    -- becomes a smooth continuous scroll). Left/Right return false so the
+    -- group can move focus to a sibling widget (left section nav etc.).
+    panel.onArrow = function(_, direction)
+        if direction ~= "up" and direction ~= "down" then return false end
+        local lines  = expandLines(opts.getLines())
+        local totalH = computeH(lines)
+        local maxScr = math.max(0, totalH - h)
+        if maxScr == 0 then return false end
+        local step = (ManualSave.Theme.FONT_HGT_SMALL + 3)
+        if direction == "up" then
+            scrollY = math.max(0, scrollY - step)
+        else
+            scrollY = math.min(maxScr, scrollY + step)
+        end
+        return true
+    end
+
+    -- InputNav auto-register: scroll-text panels become a single navigable
+    -- region. Up/Down on it scrolls the content; Left/Right hands off via the
+    -- group exit chain. opts.focusGroup = false suppresses registration.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then g:add(panel) end
+    end
 
     local obj = { panel = panel }
     function obj.resetScroll() scrollY = 0 end

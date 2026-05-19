@@ -321,6 +321,10 @@ function ManualSave.makeRecoveryFlags(parent, opts)
                 if key == "resetTime" and presetRow then
                     presetRow:setVisible(flags.resetTime)
                 end
+                -- Refresh conditional widgets (Load With Flags enableIf depends on flags state).
+                if ManualSave.UI and ManualSave.UI.evalConditions then
+                    ManualSave.UI.evalConditions()
+                end
             end,
         })
         ManualSave.makeInfoButton(parent, {
@@ -363,16 +367,23 @@ function ManualSave.makeRecoveryFlags(parent, opts)
     end
 
     -- LOAD WITH FLAGS button
+    -- Live-toggling appearance via enableIf: when no flag is active the button
+    -- is disabled (greyed out + skipped in keyboard nav); when at least one
+    -- flag is set it lights up in the "danger-fill" style. No custom render.
+    local function anyFlagActive()
+        for _, v in pairs(flags) do if v then return true end end
+        return false
+    end
     ManualSave.makeButton(parent, {
         x=0, y=ry, w=w, h=btnH,
         label = getText("UI_MSM_Ops_BtnLoadWithFlags"),
-        groups={"bat_required"},
+        style = "danger-fill",
+        groups = {"bat_required"},
+        enableIf = anyFlagActive,
         onClick = function()
             if ManualSave._progressActive then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
-            local anyActive = false
-            for _, v in pairs(flags) do if v then anyActive = true; break end end
-            if not anyActive then return end
+            if not anyFlagActive() then return end
             local times = { dawn="06:00", midday="12:00", dusk="18:00", midnight="00:00" }
             local lines = {}
             if flags.wipeZombies    then table.insert(lines, getText("UI_MSM_Ops_FlagWipeZombies"))  end
@@ -408,31 +419,6 @@ function ManualSave.makeRecoveryFlags(parent, opts)
                     ManualSave.SaveManager.load(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot)
                 end,
             })
-        end,
-        render = function(ab)
-            local anyActive = false
-            for _, v in pairs(flags) do if v then anyActive = true; break end end
-            local over = false; pcall(function() over = ab:isMouseOver() end)
-            if anyActive then
-                local bgR = over and TH.DANGER_R*0.26 or TH.DANGER_R*0.14
-                local bgG = over and TH.DANGER_G*0.15 or TH.DANGER_G*0.08
-                local bgB = over and TH.DANGER_B*0.14 or TH.DANGER_B*0.08
-                ab:drawRect(0,0,ab.width,ab.height,1,bgR,bgG,bgB)
-                ab:drawRectBorder(0,0,ab.width,ab.height,1,
-                    TH.DANGER_R*0.9, TH.DANGER_G*0.5, TH.DANGER_B*0.4)
-            else
-                ab:drawRectBorder(0,0,ab.width,ab.height,0.5, TH.MUTED_R, TH.MUTED_G, TH.MUTED_B)
-            end
-            local fh = getTextManager():getFontHeight(UIFont.Small)
-            local btnTxt = getText("UI_MSM_Ops_BtnLoadWithFlags")
-            local tw = getTextManager():MeasureStringX(UIFont.Small, btnTxt)
-            local tr = anyActive and TH.DANGER_R       or TH.MUTED_R
-            local tg = anyActive and TH.DANGER_G+0.12  or TH.MUTED_G
-            local tb = anyActive and TH.DANGER_B+0.08  or TH.MUTED_B
-            local ta = anyActive and 1.0 or 0.6
-            ab:drawText(btnTxt,
-                math.floor((ab.width-tw)/2), math.floor((ab.height-fh)/2),
-                tr, tg, tb, ta, UIFont.Small)
         end,
     })
 end

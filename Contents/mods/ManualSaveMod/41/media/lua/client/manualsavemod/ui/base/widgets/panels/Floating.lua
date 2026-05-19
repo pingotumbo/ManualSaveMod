@@ -41,10 +41,21 @@ function ManualSave.makeFloatingPanel(opts)
 
     p.render = function(self2)
         local TH2 = ManualSave.Theme
-        self2:drawRectBorder(0, 0, self2.width, self2.height, 0.85,
-            TH2.ACCENT_R * 0.85, TH2.ACCENT_G * 0.60, TH2.ACCENT_B * 0.35)
-        self2:drawRectBorder(1, 1, self2.width - 2, self2.height - 2, 0.22,
-            TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+        if opts.borderStyle == "accent" then
+            -- Solid 2-pixel accent border on all four edges (used by HelpScreen
+            -- and any other floating panel that wants a stronger frame).
+            local bw = 2
+            self2:drawRect(0, 0, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            self2:drawRect(0, self2.height-bw, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            self2:drawRect(0, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            self2:drawRect(self2.width-bw, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+        else
+            -- Default: 2-tone accent border (outer dim, inner faint glow)
+            self2:drawRectBorder(0, 0, self2.width, self2.height, 0.85,
+                TH2.ACCENT_R * 0.85, TH2.ACCENT_G * 0.60, TH2.ACCENT_B * 0.35)
+            self2:drawRectBorder(1, 1, self2.width - 2, self2.height - 2, 0.22,
+                TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+        end
     end
 
     -- Title bar background
@@ -135,6 +146,23 @@ function ManualSave.makeFloatingPanel(opts)
     xBtn.borderColor = { r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=0.5 }
     xBtn.textColor   = { r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=1 }
     p:addChild(xBtn)
+    -- InputNav: expose onActivate so Enter on the focused X fires close.
+    -- The render below adds the focus ring; actual nav registration happens
+    -- after installPanelNav, deferred to obj.open so X sits at the END of
+    -- the tab order (preserves content-first default focus).
+    xBtn.onActivate = function() doClose() end
+
+    -- Render the focus ring on the X button when keyboard mode is active.
+    local xOrigRender = xBtn.render
+    xBtn.render = function(self2)
+        if xOrigRender then xOrigRender(self2) end
+        if self2.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+            for i = 0, TH.FOCUS_BW - 1 do
+                self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                    TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+            end
+        end
+    end
 
     -- ESC closes; opt callback runs alongside it
     p.onKeyRelease = function(self2, key)
@@ -161,6 +189,16 @@ function ManualSave.makeFloatingPanel(opts)
         if _userUpdate then _userUpdate(self2) end
     end
     if opts.noBorder then p.render = function() end end
+
+    -- InputNav: auto-create a focus manager + group for this floating window.
+    if ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
+        ManualSave.InputNav.installPanelNav(p, obj, { id="floating" })
+        -- Defer X button registration so it sits at the END of the tab order
+        -- (after all content widgets the caller will add later between makeFloatingPanel
+        -- returning and d.open() being called). _inputNavRegisterAtEnd drains its
+        -- queue inside the open() wrapper installed by installPanelNav.
+        if p._inputNavRegisterAtEnd then p._inputNavRegisterAtEnd(xBtn) end
+    end
 
     if opts.onClose then obj.onClose(opts.onClose) end
 
