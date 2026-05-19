@@ -202,6 +202,17 @@ function ManualSave.makeScrollText(parent, opts)
         return true
     end
 
+    -- Right-stick continuous scroll: see ScrollList for the contract.
+    panel.onAnalogScroll = function(_, _, dy)
+        if not dy or dy == 0 then return false end
+        local lines  = expandLines(opts.getLines())
+        local totalH = computeH(lines)
+        local maxScr = math.max(0, totalH - h)
+        if maxScr == 0 then return false end
+        scrollY = math.max(0, math.min(maxScr, scrollY + dy))
+        return true
+    end
+
     -- InputNav auto-register: scroll-text panels become a single navigable
     -- region. Up/Down on it scrolls the content; Left/Right hands off via the
     -- group exit chain. opts.focusGroup = false suppresses registration.

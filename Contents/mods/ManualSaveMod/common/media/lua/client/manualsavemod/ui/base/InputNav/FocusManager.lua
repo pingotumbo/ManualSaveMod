@@ -96,7 +96,26 @@ function FocusManager:activate()
 end
 
 -- Cancel (Esc / B). Returns false if no handler attached.
+--
+-- Priority order:
+--   1. The currently focused widget may declare `onCancel(widget)` (e.g. an
+--      edit-mode widget that wants Esc to exit edit rather than close the
+--      screen). If it returns truthy, the cancel is consumed there.
+--   2. Otherwise the manager's own onCancel runs (typically close the panel).
 function FocusManager:cancel()
+    if self.current then
+        local w = self.current.items and self.current.items[self.current.index]
+        if w and type(w.onCancel) == "function" then
+            local handled
+            local ok = pcall(function() handled = w.onCancel(w) end)
+            if ok and handled then
+                if ManualSave.InputNav and ManualSave.InputNav.playCancelSound then
+                    ManualSave.InputNav.playCancelSound()
+                end
+                return true
+            end
+        end
+    end
     if not self.onCancel then return false end
     pcall(self.onCancel)
     if ManualSave.InputNav and ManualSave.InputNav.playCancelSound then

@@ -122,6 +122,11 @@ function ManualSave.makeSettingToolbar(parent, opts)
         and math.floor((ROW_H - tbH) / 2)
         or  (ROW_H - tbH - 10)
 
+    -- Add the wrapper to the parent BEFORE the toolbar so makeToolbar's
+    -- findNavGroup walk-up can reach the section's focus group through p.parent.
+    -- Without this, the toolbar buttons would silently fail to register.
+    if parent then parent:addChild(p) end
+
     ManualSave.makeToolbar(p, {
         x=tbX, y=tbY, w=tbW, h=tbH,
         items    = tbItems,
@@ -136,7 +141,6 @@ function ManualSave.makeSettingToolbar(parent, opts)
         end,
     })
 
-    if parent then parent:addChild(p) end
     return p
 end
 

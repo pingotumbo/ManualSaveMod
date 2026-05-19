@@ -32,15 +32,59 @@ function ManualSave.openSettingsScreen()
 
     local d = ManualSave.makeFloatingPanel({
         w=W, h=H,
-        title   = getText("UI_MSM_Settings_Title"),
-        onClose = function() ManualSave.closeSettingsScreen() end,
+        title     = getText("UI_MSM_Settings_Title"),
+        installNav = false,   -- custom 2-group nav installed below
+        onClose   = function() ManualSave.closeSettingsScreen() end,
     })
     ss._screen = d
 
     local cy = d.titleH
-    local ch  = H - cy
+    local ch = H - cy
 
-    ManualSave.makeSettingsNav(d.panel, { y=cy, h=ch, sections=SECTIONS, navW=NAV_W })
+    -- Two cross-linked focus groups:
+    --   navGroup     = vertical list of section tabs on the left
+    --   contentGroup = vertical list of widgets on the right (slider rows,
+    --                  option cards, checkbox rows, ...). Hidden section
+    --                  panels report isVisible()=false, so their widgets
+    --                  are skipped by FocusGroup.isNavigable automatically.
+    -- Links: right from nav -> content; left from content -> nav.
+    local IN = ManualSave.InputNav
+    local mgr, groups = IN.buildManager({
+        { id="nav",     layout="vertical", wrap=true },
+        { id="content", layout="vertical", wrap=true },
+    }, {
+        { from=1, on="right", to=2 },
+        { from=2, on="left",  to=1 },
+    })
+    local navGroup, contentGroup = groups[1], groups[2]
+    mgr.onCancel = function() ManualSave.closeSettingsScreen() end
+
+    -- Tag the inner panel so child widgets walking up via findNavGroup land in
+    -- the right group: nav-side widgets land in navGroup, section-side widgets
+    -- land in contentGroup. Each panel gets its own _inputNavGroup pointer.
+    d.panel._inputNav      = mgr
+    d.panel._inputNavGroup = contentGroup   -- safe default for footer-area widgets
+
+    -- Push the manager when the floating panel opens; pop on close.
+    local origOpen = d.open
+    d.open = function()
+        IN.pushActive(mgr)
+        if origOpen then origOpen() end
+    end
+    d.onClose(function() IN.popActive(mgr) end)
+
+    -- The floating window's X button (no overlay close): register at the end
+    -- of the content group's tab order.
+    if d.xButton then contentGroup:add(d.xButton) end
+
+    -- makeSettingsNav builds a ScrollList registered as a single item in
+    -- navGroup (via opts.focusGroup). Up/Down inside the list cycles
+    -- sections; Left/Right exit via the link to contentGroup.
+    ManualSave.makeSettingsNav(d.panel, {
+        y=cy, h=ch, sections=SECTIONS, navW=NAV_W,
+        focusGroup      = navGroup,
+        onSectionChange = function() contentGroup:focusFirst() end,
+    })
 
     local sx = NAV_W + 1
     local sw = W - NAV_W - 1
@@ -54,6 +98,8 @@ function ManualSave.openSettingsScreen()
     }
     for _, sec in ipairs(SECTIONS) do
         local sp = builders[sec.id](d.panel, { x=sx, y=cy, w=sw, h=sh })
+        -- Section widgets register into contentGroup via walk-up on this panel.
+        sp._inputNavGroup = contentGroup
         ss._sectionPanels[sec.id] = sp
         sp:setVisible(sec.id == ss._section)
     end

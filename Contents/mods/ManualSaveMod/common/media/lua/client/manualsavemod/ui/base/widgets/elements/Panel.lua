@@ -65,6 +65,78 @@ function ManualSave.makePanel(parent, opts)
     return p
 end
 
+-- Scrollable container panel. Same API as makePanel, but enables PZ's native
+-- setScrollChildren(true) + addScrollBars() so any children added after it
+-- exceed the visible height are scrollable.
+--
+-- Extras automatically wired:
+--   - Mouse wheel scrolls (vanilla default already does this once
+--     scroll-children is on; we keep an explicit handler so a caller-supplied
+--     onMouseWheel can compose with it).
+--   - panel.onAnalogScroll(_, dx, dy) is set so AnalogStick (right stick)
+--     can scroll the container when it's the focused/visible target.
+--   - panel.onArrow returns false so directional navigation never gets
+--     trapped by the container itself — focus moves between child widgets
+--     through the standard FocusGroup mechanism.
+--   - panel.ensureChildVisible(child) scrolls the viewport so the given
+--     child is fully in view (useful from FocusGroup focus-change callbacks).
+--
+-- opts: same as makePanel.
+---@param parent ISPanel?
+---@param opts table
+---@return ISPanel
+function ManualSave.makeScrollPanel(parent, opts)
+    local p = ManualSave.makePanel(parent, opts)
+
+    -- Enable native scroll-children + scrollbars on the underlying ISPanel.
+    -- Java side handles wheel + drag interaction; we just call the setup once.
+    pcall(function() p:setScrollChildren(true)        end)
+    pcall(function() p:addScrollBars()                end)
+
+    -- Keep mouse wheel handler unless caller already provided one. PZ scrolls
+    -- automatically when scrollchildren are enabled, so this is mostly a
+    -- safety net; if caller passed opts.onMouseWheel, makePanel already wired it.
+    if not opts.onMouseWheel then
+        p.onMouseWheel = function(self2, delta)
+            local step = 30
+            self2:setYScroll(self2:getYScroll() - delta * step)
+            return true
+        end
+    end
+
+    -- Right-stick continuous scroll (AnalogStick contract).
+    p.onAnalogScroll = function(self2, _, dy)
+        if not dy or dy == 0 then return false end
+        self2:setYScroll(self2:getYScroll() - dy)
+        return true
+    end
+
+    -- Containers don't consume arrow keys; focus passes through to children.
+    p.onArrow = function() return false end
+
+    -- Scroll the viewport so `child` is fully visible. `child` must be a
+    -- direct or indirect descendant whose getY()/getHeight() are valid in this
+    -- panel's coordinate space (PZ's setYScroll is in the panel's own space).
+    function p.ensureChildVisible(child)
+        if not child then return end
+        local cy, ch
+        local ok = pcall(function()
+            cy = tonumber(child:getY())     or 0
+            ch = tonumber(child:getHeight()) or 0
+        end)
+        if not ok then return end
+        local top    = -p:getYScroll()
+        local bottom = top + p:getHeight()
+        if cy < top then
+            p:setYScroll(-cy)
+        elseif cy + ch > bottom then
+            p:setYScroll(-(cy + ch - p:getHeight()))
+        end
+    end
+
+    return p
+end
+
 -- Creates a panel that immediately hides a set of target elements and
 -- restores them when destroy() is called.  Used to implement cover panels
 -- (e.g. MoreScreen overlaying LoadScreen detail area) without scattering

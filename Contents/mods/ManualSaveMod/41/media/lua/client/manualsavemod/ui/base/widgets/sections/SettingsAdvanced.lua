@@ -8,7 +8,7 @@ ManualSave = ManualSave or {}
 function ManualSave.makeSettingsAdvanced(parent, opts)
     local TH    = ManualSave.Theme
     local w     = opts.w
-    local p     = ManualSave.makePanel(parent, {
+    local p     = ManualSave.makeScrollPanel(parent, {
         x=opts.x, y=opts.y, w=w, h=opts.h, border=false, bg={r=0,g=0,b=0,a=0},
     })
     local ROW_H = TH.FONT_HGT_SMALL * 2 + 28

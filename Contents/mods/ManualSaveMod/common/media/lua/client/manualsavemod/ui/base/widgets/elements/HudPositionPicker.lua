@@ -6,15 +6,13 @@
 
 ManualSave = ManualSave or {}
 
+-- 9 natural positions used by applySnap to gently pull the indicator toward
+-- standard HUD anchors during drag (mouse / keyboard / joypad). The visible
+-- 3x3 compass preset grid has been removed; only the snap behaviour remains.
 local DEFAULT_ANCHORS = {
     { id="tl", x=0.05, y=0.08 }, { id="tc", x=0.50, y=0.08 }, { id="tr", x=0.95, y=0.08 },
     { id="ml", x=0.05, y=0.50 }, { id="mc", x=0.50, y=0.50 }, { id="mr", x=0.95, y=0.50 },
     { id="bl", x=0.05, y=0.88 }, { id="bc", x=0.50, y=0.88 }, { id="br", x=0.95, y=0.88 },
-}
-local DEFAULT_ANCHOR_GRID = {
-    { "tl", "tc", "tr" },
-    { "ml", "mc", "mr" },
-    { "bl", "bc", "br" },
 }
 local SNAP_THRESH = 0.06
 
@@ -23,9 +21,7 @@ local SNAP_THRESH = 0.06
 --   configKeyX      string   Config key for normalised X (stored as "0.500")
 --   configKeyY      string   Config key for normalised Y
 --   configKeyHide   string   Config key for hide flag ("0" / "1")
---   anchors?        array    { id, x, y } preset list (default: 9-point grid)
---   anchorGrid?     array    3×3 table of anchor ids for compass display
---   compassKey?     string   i18n key for compass label
+--   anchors?        array    { id, x, y } snap targets (default: 9-point grid)
 --   hideHudKey?     string   i18n key for Hide HUD button
 --   hiddenTextKey?  string   i18n key for the "hidden" overlay text
 --   anchorPrefix?   string   i18n prefix for anchor names  (default "UI_MSM_Anchor_")
@@ -34,10 +30,8 @@ local SNAP_THRESH = 0.06
 function ManualSave.makeHudPositionPicker(parent, opts)
     local TH          = ManualSave.Theme
     local anchors     = opts.anchors    or DEFAULT_ANCHORS
-    local anchorGrid  = opts.anchorGrid or DEFAULT_ANCHOR_GRID
     local anchorPfx   = opts.anchorPrefix or "UI_MSM_Anchor_"
     local customKey   = opts.customKey    or "UI_MSM_Anchor_Custom"
-    local compassKey  = opts.compassKey   or "UI_MSM_Settings_Compass"
     local hideHudKey  = opts.hideHudKey   or "UI_MSM_Settings_HideHud"
     local hiddenTxtKey= opts.hiddenTextKey or "UI_MSM_Settings_PreviewHudHidden"
 
@@ -48,6 +42,11 @@ function ManualSave.makeHudPositionPicker(parent, opts)
     local dragging = false
     local snapVX   = nil
     local snapHY   = nil
+    -- Edit mode (keyboard / joypad): when true, arrows move the indicator and
+    -- Up/Down/Left/Right are NOT exit directions. Toggled on Activate (Enter/A),
+    -- exited by Activate again or Cancel (Esc/B). The schematic widget consumes
+    -- Cancel while in edit so the surrounding screen does not close.
+    local editing = false
 
     local function findAnchor()
         for _, a in ipairs(anchors) do
@@ -76,17 +75,17 @@ function ManualSave.makeHudPositionPicker(parent, opts)
     end
 
     -- Layout
-    local COMP_W    = 120
-    local COMP_H    = 68
+    -- Left side: schematic + coordinates readout.
+    -- Right side: a single "Hide HUD" toggle button, vertically centred.
+    -- The 3x3 compass preset grid has been removed (snap logic preserved
+    -- via DEFAULT_ANCHORS so the indicator still snaps near the 9 natural
+    -- positions when dragged with mouse / keyboard / joypad).
+    local HIDE_W    = 120
     local COMBO_GAP = TH.GAP * 2
     local w         = opts.w
-    local schW      = w - COMBO_GAP - COMP_W
+    local schW      = w - COMBO_GAP - HIDE_W
     local SCH_H     = 98
-    local CELL_GAP  = 2
-    local cellW     = math.floor((COMP_W - CELL_GAP * 2) / 3)
-    local cellH     = math.floor((COMP_H - CELL_GAP * 2) / 3)
-    local COMBO_H   = math.max(SCH_H + 4 + TH.FONT_HGT_SMALL,
-                               TH.FONT_HGT_SMALL + 2 + COMP_H + TH.GAP + TH.BUTTON_HGT)
+    local COMBO_H   = SCH_H + 4 + TH.FONT_HGT_SMALL
 
     local combo = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y, w=w, h=COMBO_H,
@@ -102,7 +101,7 @@ function ManualSave.makeHudPositionPicker(parent, opts)
 
             if dragging then
                 local mdown = false
-                pcall(function() mdown = getCore():isLeftMouseButtonDown() end)
+                pcall(function() mdown = isMouseButtonDown(0) end)
                 if not mdown then
                     dragging = false; snapVX = nil; snapHY = nil; savePosXY()
                 else
@@ -132,12 +131,15 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                 local hbX = math.floor((pv.width - hbW) / 2)
                 pv:drawRectBorder(hbX, pv.height - 7, hbW, 4, 0.22, TH2.DIM_R, TH2.DIM_G, TH2.DIM_B)
 
-                -- Snap guides
+                -- Snap guides, tinted accent so they match the indicator pill
+                -- and the rest of the mod's accent palette.
                 if snapVX then
-                    pv:drawRect(math.floor(snapVX * pv.width), 0, 1, pv.height, 0.5, 0.30, 0.68, 0.26)
+                    pv:drawRect(math.floor(snapVX * pv.width), 0, 1, pv.height, 0.5,
+                        TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
                 end
                 if snapHY then
-                    pv:drawRect(0, math.floor(snapHY * pv.height), pv.width, 1, 0.5, 0.30, 0.68, 0.26)
+                    pv:drawRect(0, math.floor(snapHY * pv.height), pv.width, 1, 0.5,
+                        TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
                 end
 
                 -- Indicator pill
@@ -150,11 +152,19 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                     TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
             end
 
-            -- InputNav focus ring (drawn last so it sits on top)
-            if pv.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+            -- InputNav focus ring (drawn last so it sits on top).
+            -- In edit mode the ring is drawn unconditionally (keyboardActive
+            -- check skipped) and tinted accent so the user can see they are
+            -- modifying the position, not just hovering.
+            local showRing = editing or
+                (pv.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive)
+            if showRing then
+                local rR = editing and TH2.ACCENT_R or TH2.FOCUS_R
+                local rG = editing and TH2.ACCENT_G or TH2.FOCUS_G
+                local rB = editing and TH2.ACCENT_B or TH2.FOCUS_B
                 for i = 0, TH2.FOCUS_BW - 1 do
                     pv:drawRectBorder(i, i, pv.width - i*2, pv.height - i*2, 1,
-                        TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+                        rR, rG, rB)
                 end
             end
         end,
@@ -177,8 +187,13 @@ function ManualSave.makeHudPositionPicker(parent, opts)
             end
         end,
     })
-    -- Keyboard: arrows nudge the indicator (3% per press, smooth with key auto-repeat).
+    -- Keyboard / joypad arrow handling:
+    --   - Outside edit mode: arrows return false so FocusGroup moves focus to
+    --     the next/prev widget normally. The schematic acts as a plain focusable.
+    --   - Inside edit mode: arrows nudge the indicator (3% per press, smooth
+    --     with key auto-repeat) and are consumed so focus stays here.
     schematic.onArrow = function(_, direction)
+        if not editing then return false end
         if hidden then return false end
         local STEP = 0.03
         if direction == "up"    then posY = math.max(0.02, posY - STEP)
@@ -189,6 +204,19 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         end
         snapVX, snapHY = nil, nil
         savePosXY()
+        return true
+    end
+    -- Activate (Enter / A) toggles edit mode. Saving happens on every nudge,
+    -- so leaving edit just commits the current value and unlocks navigation.
+    schematic.onActivate = function()
+        if hidden then return end
+        editing = not editing
+    end
+    -- Cancel (Esc / B) while in edit exits edit mode without propagating to
+    -- the FocusManager's onCancel (which would close the surrounding screen).
+    schematic.onCancel = function()
+        if not editing then return false end
+        editing = false
         return true
     end
 
@@ -212,131 +240,14 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         end,
     })
 
-    -- Compass label
-    local compassX = schW + COMBO_GAP
-    ManualSave.makePanel(combo, {
-        x=compassX, y=0, w=COMP_W, h=TH.FONT_HGT_SMALL,
-        bg={r=0,g=0,b=0,a=0}, border=false,
-        prerender = function(pv)
-            local TH2 = ManualSave.Theme
-            pv:drawText(getText(compassKey), 0, 0,
-                TH2.DIM_R, TH2.DIM_G, TH2.DIM_B, 0.6, UIFont.Small)
-        end,
-    })
-
-    -- Compass 3x3 grid wrapped in a container so the whole grid is a single
-    -- nav item with an internal cursor (row, col). Arrow keys move the cursor
-    -- between cells; Enter applies the cursor's anchor preset.
-    local gridY = TH.FONT_HGT_SMALL + 2
-    local gridW = 3 * cellW + 2 * CELL_GAP
-    local gridH = 3 * cellH + 2 * CELL_GAP
-    local cursorRow, cursorCol = 1, 1   -- 1-based; start at centre cell
-
-    -- Initialise cursor to point at the currently-active anchor when possible.
-    do
-        local active = findAnchor()
-        for r = 1, 3 do
-            for c = 1, 3 do
-                if anchorGrid[r] and anchorGrid[r][c] == active then
-                    cursorRow, cursorCol = r, c
-                end
-            end
-        end
-    end
-
-    local function applyAnchorAt(r, c)
-        local aid = anchorGrid[r] and anchorGrid[r][c]
-        if not aid then return end
-        for _, a in ipairs(anchors) do
-            if a.id == aid then
-                posX, posY = a.x, a.y
-                hidden = false; snapVX = nil; snapHY = nil
-                ManualSave.Config.set(opts.configKeyX, string.format("%.3f", posX))
-                ManualSave.Config.set(opts.configKeyY, string.format("%.3f", posY))
-                ManualSave.Config.set(opts.configKeyHide, "0")
-                return
-            end
-        end
-    end
-
-    local compassWrap = ManualSave.makePanel(combo, {
-        x=compassX, y=gridY, w=gridW, h=gridH,
-        bg={ r=0, g=0, b=0, a=0 }, border=false,
-    })
-    for row = 0, 2 do
-        for col = 0, 2 do
-            local aid = anchorGrid[row + 1] and anchorGrid[row + 1][col + 1]
-            if aid then
-                local cx2 = col * (cellW + CELL_GAP)
-                local cy2 = row * (cellH + CELL_GAP)
-                local capturedId  = aid
-                local capturedRow = row + 1
-                local capturedCol = col + 1
-                ManualSave.makePanel(compassWrap, {
-                    x=cx2, y=cy2, w=cellW, h=cellH,
-                    bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B, a=1 }, border=false,
-                    prerender = function(pv)
-                        local TH2    = ManualSave.Theme
-                        local active = (findAnchor() == capturedId)
-                        local cursor = (cursorRow == capturedRow and cursorCol == capturedCol)
-                        local kbOn   = ManualSave.InputNav and ManualSave.InputNav.keyboardActive
-                        local over   = false
-                        pcall(function() over = pv:isMouseOver() end)
-                        if active then
-                            pv:drawRect(0, 0, pv.width, pv.height, 0.10,
-                                TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-                            pv:drawRectBorder(0, 0, pv.width, pv.height, 0.55,
-                                TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-                        else
-                            if over then
-                                pv:drawRect(0, 0, pv.width, pv.height, 0.06, 1, 1, 1)
-                            end
-                            pv:drawRectBorder(0, 0, pv.width, pv.height, 0.25,
-                                TH2.LINE_R, TH2.LINE_G, TH2.LINE_B)
-                        end
-                        local barW = active and 18 or 14
-                        local barH = active and 3  or 2
-                        local bA   = active and 0.9 or 0.35
-                        local bR   = active and TH2.ACCENT_R or TH2.DIM_R
-                        local bG   = active and TH2.ACCENT_G or TH2.DIM_G
-                        local bB2  = active and TH2.ACCENT_B or TH2.DIM_B
-                        pv:drawRect(
-                            math.floor((pv.width  - barW) / 2),
-                            math.floor((pv.height - barH) / 2),
-                            barW, barH, bA, bR, bG, bB2)
-                        -- Keyboard cursor highlight on the focused cell.
-                        if cursor and compassWrap.isFocused and kbOn then
-                            for i = 0, TH2.FOCUS_BW - 1 do
-                                pv:drawRectBorder(i, i, pv.width - i*2, pv.height - i*2, 1,
-                                    TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
-                            end
-                        end
-                    end,
-                    onMouseDown = function()
-                        cursorRow, cursorCol = capturedRow, capturedCol
-                        applyAnchorAt(capturedRow, capturedCol)
-                        return true
-                    end,
-                })
-            end
-        end
-    end
-
-    -- Keyboard: arrows move the internal cursor; Enter applies the anchor.
-    compassWrap.onArrow = function(_, direction)
-        if direction == "up"    then cursorRow = math.max(1, cursorRow - 1); return true
-        elseif direction == "down"  then cursorRow = math.min(3, cursorRow + 1); return true
-        elseif direction == "left"  then cursorCol = math.max(1, cursorCol - 1); return true
-        elseif direction == "right" then cursorCol = math.min(3, cursorCol + 1); return true
-        end
-        return false
-    end
-    compassWrap.onActivate = function() applyAnchorAt(cursorRow, cursorCol) end
-
-    -- Hide HUD toggle button
-    local hideBtnY = gridY + 3 * cellH + 2 * CELL_GAP + TH.GAP
+    -- Hide HUD toggle button, vertically centred on the right side of the
+    -- combo. The 3x3 compass preset grid has been removed; the snap logic
+    -- (defined above via DEFAULT_ANCHORS + applySnap) still nudges the
+    -- indicator toward the 9 natural positions during mouse / keyboard drag.
+    local hideX = schW + COMBO_GAP
+    local hideY = math.floor((COMBO_H - TH.BUTTON_HGT) / 2)
     local hideBtn = ManualSave.makePanel(combo, {
-        x=compassX, y=hideBtnY, w=COMP_W, h=TH.BUTTON_HGT,
+        x=hideX, y=hideY, w=HIDE_W, h=TH.BUTTON_HGT,
         bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B, a=1 }, border=false,
         prerender = function(pv)
             local TH2  = ManualSave.Theme
@@ -388,9 +299,9 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         ManualSave.Config.set(opts.configKeyHide, hidden and "1" or "0")
     end
 
-    -- Auto-register the three interactive zones in the parent's nav group.
-    -- Each is a separate nav item so Left/Right cycles between them naturally
-    -- and arrow keys / Enter on each behave per their own handlers.
+    -- Auto-register the two interactive zones in the parent's nav group.
+    -- schematic = position editor (edit mode toggle inside).
+    -- hideBtn   = HUD visibility toggle.
     if opts.focusGroup ~= false then
         local g = opts.focusGroup
         if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
@@ -398,7 +309,6 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         end
         if g then
             g:add(schematic)
-            g:add(compassWrap)
             g:add(hideBtn)
         end
     end

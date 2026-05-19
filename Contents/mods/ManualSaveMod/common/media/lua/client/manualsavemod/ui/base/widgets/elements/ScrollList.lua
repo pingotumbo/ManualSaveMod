@@ -293,6 +293,17 @@ function ManualSave.makeScrollList(parent, opts)
     end
     p.onActivate = obj.activateSelected
 
+    -- Right-stick continuous scroll: called by AnalogStick every tick while
+    -- this panel is the focused widget and the right stick is tilted past the
+    -- deadzone. dy is in pixels (already scaled by stick magnitude and tick
+    -- duration). Returns true to mark the scroll as consumed.
+    p.onAnalogScroll = function(_, _, dy)
+        if not dy or dy == 0 then return false end
+        scrollY = scrollY + dy
+        clampScroll()
+        return true
+    end
+
     return obj
 end
 

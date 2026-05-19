@@ -102,7 +102,13 @@ end
 -- Focus the widget at index `i` (1-based). Pass 0 to clear focus.
 -- silent=true suppresses the navigation sound (used for initial / programmatic focus).
 function FocusGroup:setIndex(i, silent)
-    if i == self.index then return end
+    -- We can short-circuit only when the index is unchanged AND the widget at
+    -- that index still believes it has focus. Cross-group exits call
+    -- blurCurrent() (clearing isFocused) without resetting self.index, so a
+    -- re-entry that lands on the same index needs to re-fire the focus state
+    -- otherwise the ring stays off until the cursor visibly moves.
+    local existing = self.items[self.index]
+    if i == self.index and existing and existing.isFocused then return end
     self:blurCurrent()
     if i < 0 or i > #self.items then i = 0 end
     self.index = i
@@ -112,6 +118,23 @@ function FocusGroup:setIndex(i, silent)
         if w.onFocus then pcall(w.onFocus, w) end
         if not silent and ManualSave.InputNav and ManualSave.InputNav.playNavSound then
             ManualSave.InputNav.playNavSound()
+        end
+        -- Auto-scroll any containing scroll panel so the newly focused widget
+        -- is visible. Walks up the parent chain looking for ensureChildVisible
+        -- (set by makeScrollPanel). The immediate child of that container is
+        -- what needs to be made visible, not necessarily the focused widget
+        -- itself (which may sit several levels deep).
+        local child = w
+        local container = w.parent
+        local guard = 0
+        while container and guard < 32 do
+            if type(container.ensureChildVisible) == "function" then
+                pcall(container.ensureChildVisible, child)
+                break
+            end
+            child     = container
+            container = container.parent
+            guard     = guard + 1
         end
     end
 end

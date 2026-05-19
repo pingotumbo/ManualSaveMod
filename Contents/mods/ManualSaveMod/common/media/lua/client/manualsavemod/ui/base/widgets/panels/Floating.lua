@@ -191,7 +191,11 @@ function ManualSave.makeFloatingPanel(opts)
     if opts.noBorder then p.render = function() end end
 
     -- InputNav: auto-create a focus manager + group for this floating window.
-    if ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
+    -- Callers that need a custom multi-group layout (e.g. SettingsScreen, which
+    -- uses two cross-linked groups for nav + content) pass installNav=false
+    -- and wire the manager themselves on the returned obj.panel.
+    if opts.installNav ~= false
+       and ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
         ManualSave.InputNav.installPanelNav(p, obj, { id="floating" })
         -- Defer X button registration so it sits at the END of the tab order
         -- (after all content widgets the caller will add later between makeFloatingPanel
@@ -199,6 +203,8 @@ function ManualSave.makeFloatingPanel(opts)
         -- queue inside the open() wrapper installed by installPanelNav.
         if p._inputNavRegisterAtEnd then p._inputNavRegisterAtEnd(xBtn) end
     end
+    -- Expose the X button so custom-nav callers can register it themselves.
+    obj.xButton = xBtn
 
     if opts.onClose then obj.onClose(opts.onClose) end
 

@@ -8,7 +8,7 @@ ManualSave = ManualSave or {}
 function ManualSave.makeSettingsProgress(parent, opts)
     local TH    = ManualSave.Theme
     local w     = opts.w
-    local p     = ManualSave.makePanel(parent, {
+    local p     = ManualSave.makeScrollPanel(parent, {
         x=opts.x, y=opts.y, w=w, h=opts.h, border=false, bg={r=0,g=0,b=0,a=0},
     })
     local cy    = TH.PAD
@@ -20,25 +20,55 @@ function ManualSave.makeSettingsProgress(parent, opts)
     })
     cy = cy + TH.FONT_HGT_SMALL + 2 + TH.GAP
 
-    -- Live preview state shared between slider and animated preview
+    -- Live preview state shared between dropdown, slider, animated preview.
     local previewStyle  = ManualSave.Config.get("SPINNER_STYLE") or "spiffo"
     local previewSizePx = math.max(24, math.min(128,
         tonumber(ManualSave.Config.get("SPINNER_SIZE_PX")) or 64))
 
-    -- Spinner style row
-    local compactH = TH.BUTTON_HGT + 12
-    ManualSave.makeSettingToolbar(p, {
-        x=0, y=cy, w=w, key="SPINNER_STYLE",
-        titleKey = "UI_MSM_Settings_SpinnerStyleTitle",
-        items = {
-            { id="spiffo", labelKey="UI_MSM_Settings_SpinnerSpiffo", value="spiffo" },
-            { id="none",   labelKey="UI_MSM_Settings_SpinnerNone",   value="none"   },
-        },
-        onPreview = function(v) previewStyle = v end,
-    })
-    cy = cy + compactH + TH.GAP
+    -- Row 1: spinner Style dropdown on the left, animated preview on the right.
+    -- The two share the same row height (120 px = preview height).
+    local PREVIEW_H = 120
+    local STYLE_W   = math.floor((w - 28 - TH.GAP) * 0.42)
+    local PREVIEW_W = w - 28 - TH.GAP - STYLE_W
+    local DD_H      = TH.BUTTON_HGT + 4
 
-    -- Spinner size slider
+    -- Style label + dropdown anchored to the top of the row.
+    ManualSave.makeLabel(p, {
+        x=14, y=cy, w=STYLE_W,
+        getText = function() return getText("UI_MSM_Settings_SpinnerStyleTitle") end,
+        r=TH.TEXT_R, g=TH.TEXT_G, b=TH.TEXT_B, a=1,
+    })
+    local ddY = cy + TH.FONT_HGT_SMALL + 4
+    ManualSave.makeDropdown(p, {
+        x=14, y=ddY, w=STYLE_W, h=DD_H,
+        value = previewStyle,
+        items = {
+            { id="spiffo", label = getText("UI_MSM_Settings_SpinnerSpiffo") },
+            { id="none",   label = getText("UI_MSM_Settings_SpinnerNone")   },
+        },
+        onChange = function(id)
+            previewStyle = id
+            ManualSave.Config.set("SPINNER_STYLE", id)
+        end,
+    })
+
+    -- Animated preview occupies the right half of the row.
+    ManualSave.makeAnimatedPreview(p, {
+        x = 14 + STYLE_W + TH.GAP, y = cy, w = PREVIEW_W, h = PREVIEW_H,
+        textures = {
+            "media/textures/MSM_SpiffoHammer_01_WindUp.png",
+            "media/textures/MSM_SpiffoHammer_02_MidSwing.png",
+            "media/textures/MSM_SpiffoHammer_03_Strike.png",
+            "media/textures/MSM_SpiffoHammer_04_Rest.png",
+        },
+        fps      = 8,
+        getSize  = function() return previewSizePx end,
+        isActive = function() return previewStyle == "spiffo" end,
+        noActiveKey = "UI_MSM_Settings_PreviewNoSpinner",
+    })
+    cy = cy + PREVIEW_H + TH.GAP
+
+    -- Row 2: spinner size slider, full width below the row above.
     ManualSave.makeSlider(p, {
         x=0, y=cy, w=w,
         min=24, max=128, value=previewSizePx,
@@ -51,22 +81,6 @@ function ManualSave.makeSettingsProgress(parent, opts)
         end,
     })
     cy = cy + (TH.FONT_HGT_SMALL + 20) + TH.GAP
-
-    -- Animated spinner preview
-    ManualSave.makeAnimatedPreview(p, {
-        x=14, y=cy, w=w-28, h=120,
-        textures = {
-            "media/textures/MSM_SpiffoHammer_01_WindUp.png",
-            "media/textures/MSM_SpiffoHammer_02_MidSwing.png",
-            "media/textures/MSM_SpiffoHammer_03_Strike.png",
-            "media/textures/MSM_SpiffoHammer_04_Rest.png",
-        },
-        fps      = 8,
-        getSize  = function() return previewSizePx end,
-        isActive = function() return previewStyle == "spiffo" end,
-        noActiveKey = "UI_MSM_Settings_PreviewNoSpinner",
-    })
-    cy = cy + 120 + TH.GAP
 
     -- HUD position block
     ManualSave.makePanel(p, {
