@@ -652,20 +652,23 @@ while ($true) {
             Write-Done "OK" "LOAD" @{ SLOT = $SLOT; SESSION_ID = $sessionId }
         }
         'SESSION_END' {
+            # NOTE (1.5.2): SESSION_END no longer deletes the vanilla save
+            # folder. It used to, on the reasoning that "the real backup is in
+            # ManualSaves, this vanilla copy was only temporary". But PZ keeps
+            # latestSave.ini pointing at that folder, and deleting it left
+            # vanilla Continue / Load crashing or showing "savefile invalid"
+            # the next time the user opened the game. Keeping the vanilla
+            # folder is the simplest robust fix: the user just has an extra
+            # checkpoint they can also load via the vanilla menu, and the
+            # ManualSaves backup remains the source of truth.
+            #
+            # We still clear the VanillaOwned entry so that subsequent saves /
+            # session bookkeeping stay consistent.
             $sid = $p['SESSION_ID']
             Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END begin: gmode=$GMODE slot=$SLOT sessionId=$sid"
-            if ($sid -and (Test-VanillaOwned $GMODE $SLOT $sid)) {
-                $vp = "$SAVES\$GMODE\$SLOT"
-                if (Test-Path -LiteralPath $vp) {
-                    Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END deleting vanilla folder: $vp"
-                    Remove-Item -LiteralPath $vp -Recurse -Force
-                } else {
-                    Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END vanilla folder not found: $vp"
-                }
+            if ($sid) {
                 Remove-VanillaOwned $GMODE $SLOT $sid
-                Write-Host "[ManualSave_Watcher] SESSION_END: vanilla slot removed."
-            } else {
-                Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END no-op (sid missing or not owned)."
+                Write-Host "[ManualSave_Watcher] SESSION_END: VanillaOwned entry cleared (vanilla folder preserved)."
             }
             Write-Done "OK" "SESSION_END"
         }

@@ -17,14 +17,36 @@ ManualSave = ManualSave or {}
 local DEADZONE     = 0.20   -- matches vanilla "stick is moving" threshold
 local PX_PER_FRAME = 20     -- scrolled when stick is fully tilted, per ~33ms frame
 
--- Find the active joypadData. We use JoypadState.joypads (the per-physical-
--- controller list, populated for every connected pad regardless of in-game /
--- main-menu state). The first slot with id >= 0 is the active controller.
+-- Find the active joypadData. PZ leaves stale entries in JoypadState.joypads
+-- after the controller is disconnected or the player switches back to keyboard
+-- input. Calling getJoypadAimingAxisX(staleId) in that state throws a Java
+-- NullPointerException (Controller.getGUID() inside JoypadManager.checkJoypad)
+-- which pcall does NOT catch — it's an uncaught Java exception during the Lua
+-- callJava bridge, not a Lua error.
+--
+-- A joypad is treated as "active" only when:
+--   - JoypadState.players has it bound to a player (in-game), OR
+--   - JoypadState.getMainMenuJoypad() returns it (main menu / sub-screens).
+-- Neither path returns a stale entry, so we never feed a dead id to PZ.
 local function activeJoypad()
     if not JoypadState or not JoypadState.joypads then return nil end
+
+    local bound = {}
+    if JoypadState.players then
+        for _, jp in pairs(JoypadState.players) do
+            if jp then bound[jp] = true end
+        end
+    end
+    if JoypadState.getMainMenuJoypad then
+        local ok, mmJp = pcall(JoypadState.getMainMenuJoypad)
+        if ok and mmJp then bound[mmJp] = true end
+    end
+
     for i = 1, 4 do
         local jp = JoypadState.joypads[i]
-        if jp and tonumber(jp.id) and jp.id >= 0 then return jp end
+        if jp and tonumber(jp.id) and jp.id >= 0 and bound[jp] then
+            return jp
+        end
     end
     return nil
 end
