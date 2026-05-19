@@ -119,23 +119,19 @@ function ManualSave.makeModSearchControls(parent, opts)
         end,
     })
 
-    local qb2Lbl = getText("UI_MSM_EditMods_QuickDeselect")
-    local qb2W   = getTextManager():MeasureStringX(UIFont.Small, qb2Lbl) + 16
-    ManualSave.makeButton(parent, {
-        x = W - PAD - qb2W, y = ctrlY, w = qb2W, h = BUTH,
-        label = qb2Lbl, style = "normal",
-        onClick = function()
-            local st2 = ManualSave.EditModsScreen._state
-            if not st2 then return end
-            for _, m in ipairs(st2.allMods) do m.checked = m.inSave end
-            ManualSave.EditModsScreen.refreshList()
-        end,
-    })
-
+    -- Compute dimensions for both buttons up-front so the visually-left button
+    -- (Escludi mancanti / QuickSelectBad) can be created FIRST. Creating in
+    -- visual left-to-right order matches the focus group iteration, so D-pad
+    -- right/left moves in the expected direction. Previously "Reimposta" was
+    -- created first and the nav order felt mirrored.
     local hasMissing = false
     if st then
         for _, m in ipairs(st.allMods) do if m.status == "missing" then hasMissing = true; break end end
     end
+
+    local qb2Lbl = getText("UI_MSM_EditMods_QuickDeselect")
+    local qb2W   = getTextManager():MeasureStringX(UIFont.Small, qb2Lbl) + 16
+
     if hasMissing then
         local qb1Lbl = getText("UI_MSM_EditMods_QuickSelectBad")
         local qb1W   = getTextManager():MeasureStringX(UIFont.Small, qb1Lbl) + 16
@@ -152,6 +148,17 @@ function ManualSave.makeModSearchControls(parent, opts)
             end,
         })
     end
+
+    ManualSave.makeButton(parent, {
+        x = W - PAD - qb2W, y = ctrlY, w = qb2W, h = BUTH,
+        label = qb2Lbl, style = "normal",
+        onClick = function()
+            local st2 = ManualSave.EditModsScreen._state
+            if not st2 then return end
+            for _, m in ipairs(st2.allMods) do m.checked = m.inSave end
+            ManualSave.EditModsScreen.refreshList()
+        end,
+    })
 end
 
 print("[ManualSaveMod] UI/Base/Widgets/Sections/ModSearchControls.lua loaded.")

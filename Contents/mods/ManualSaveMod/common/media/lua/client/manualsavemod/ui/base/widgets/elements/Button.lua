@@ -394,6 +394,11 @@ function ManualSave.makeInfoButton(parent, opts)
     end
 
     if parent then parent:addChild(btn) end
+
+    -- Info buttons (small "i" circles) are mouse-only by design: they reveal
+    -- a hover/click popup with secondary information. Keyboard / gamepad
+    -- navigation skips them (no focus group registration).
+
     return { btn = btn }
 end
 

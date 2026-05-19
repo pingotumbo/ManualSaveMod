@@ -7,7 +7,7 @@ ManualSave.LoadScreen = ManualSave.LoadScreen or {}
 
 local LEFT_W = 440
 
-function ManualSave.openLoadScreen(fromMainMenu)
+function ManualSave.openLoadScreen(fromMainMenu, joypadData)
     if ManualSave.LoadScreen._screen then return end
 
     local TH       = ManualSave.Theme
@@ -22,6 +22,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
 
     local d = ManualSave.makeScreenPanel({
         w=PW, h=PH,
+        subScreenOf = "mainScreen",
         onKeyRelease = function(_, key)
             local st = ManualSave.LoadScreen._state
             local fromMM = st and st.fromMainMenu
@@ -200,7 +201,7 @@ function ManualSave.openLoadScreen(fromMainMenu)
     ManualSave.LoadScreen.applyFilter()
     ManualSave.UI.evalConditions()
     if getPlayer() then setGameSpeed(0); setShowPausedMessage(false) end
-    d.open()
+    d.open(joypadData)
 end
 
 -- Updates the warning label state. The "?" button's visibility is handled

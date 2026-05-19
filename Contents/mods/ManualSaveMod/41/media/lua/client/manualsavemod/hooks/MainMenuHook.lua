@@ -8,9 +8,18 @@ ManualSave = ManualSave or {}
 local labelHgt       = getTextManager():getFontHeight(UIFont.Large) + 16
 local labelSeparator = 16
 
+-- Vanilla pattern: A-button on a main menu entry invokes
+-- onMenuItemMouseDownMainMenu(item, 0, 0) WITHOUT passing joypadData. The
+-- handler then retrieves it independently via JoypadState.getMainMenuJoypad()
+-- and forwards it to setVisible(true, joypadData). We mirror that here so the
+-- gamepad focus is transferred to LoadScreen on A-press from the main menu.
 local function onLoadManualSaveClick(_, _, _)
     getSoundManager():playUISound("UIActivateMainMenuItem")
-    ManualSave.openLoadScreen(true)    -- main menu: show IMPORT button
+    local joypadData = nil
+    if JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
+    end
+    ManualSave.openLoadScreen(true, joypadData)
 end
 
 Events.OnMainMenuEnter.Add(function()
@@ -71,35 +80,66 @@ Events.OnMainMenuEnter.Add(function()
     print("[ManualSaveMod] Main menu: LOAD MANUAL SAVE injected.")
 end)
 
--- Joypad / controller navigation integration.
--- PZ MainScreen builds its keyboard/joypad nav list (self.joypadButtonsY) from
--- a hardcoded set of options inside MainScreen:onGainJoypadFocus. Our injected
--- option is not in that list, so it would be skipped when navigating with the
--- controller. We monkey-patch the method to append our entry to the list right
--- before the EXIT row, so it sits in the same spot as it is rendered visually.
-local _origOnGainJoypadFocus = nil
-Events.OnMainMenuEnter.Add(function()
-    if _origOnGainJoypadFocus then return end
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Joypad navigation integration
+--
+-- Vanilla MainScreen rebuilds self.joypadButtonsY from a hardcoded list every
+-- time onGainJoypadFocus runs, so the label has to be re-injected on each call
+-- rather than once at construction. The list is a list of single-element
+-- TABLES — { { uiElement }, ... } — and PZ later indexes both rows and columns
+-- (children[joypadIndex]). Previous attempts crashed by inserting the bare
+-- element instead of a one-element row table.
+--
+-- Activation on A-button goes through MainScreen.onMenuItemMouseDownMainMenu,
+-- which branches on item.internal. Unknown internals are a no-op there, so we
+-- wrap that function too and handle our id before delegating to vanilla.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+local _joypadIntegrationInstalled = false
+
+local function installJoypadIntegration()
+    if _joypadIntegrationInstalled then return end
     if not MainScreen or not MainScreen.onGainJoypadFocus then return end
-    _origOnGainJoypadFocus = MainScreen.onGainJoypadFocus
+    if not MainScreen.onMenuItemMouseDownMainMenu then return end
+    _joypadIntegrationInstalled = true
+
+    local origGainFocus = MainScreen.onGainJoypadFocus
     function MainScreen:onGainJoypadFocus(joypadData)
-        _origOnGainJoypadFocus(self, joypadData)
+        origGainFocus(self, joypadData)
         local opt = self.loadManualSaveOption
-        if not opt then return end
-        local visible = true
-        pcall(function() visible = opt:isVisible() end)
-        if not visible then return end
-        pcall(function() opt:setJoypadFocused(false) end)
-        -- Insert before EXIT so the visual order matches the nav order.
-        for i, v in ipairs(self.joypadButtonsY or {}) do
-            if v[1] == self.exitOption then
-                table.insert(self.joypadButtonsY, i, { opt })
-                return
+        if not opt or not opt:isVisible() then return end
+        local rows = self.joypadButtonsY
+        if not rows then return end
+        -- Skip if already present (defensive: re-entry, refocus, etc.).
+        for _, row in ipairs(rows) do
+            if row and row[1] == opt then return end
+        end
+        -- Find EXIT row and insert ours just above it. Falls back to append.
+        local insertAt = #rows + 1
+        for i, row in ipairs(rows) do
+            local el = row and row[1]
+            if el and el.internal == "EXIT" then
+                insertAt = i
+                break
             end
         end
-        -- Fallback: append at the end if EXIT could not be found.
-        table.insert(self.joypadButtonsY, { opt })
+        table.insert(rows, insertAt, { opt })
     end
-end)
+
+    local origMouseDown = MainScreen.onMenuItemMouseDownMainMenu
+    function MainScreen.onMenuItemMouseDownMainMenu(item, x, y)
+        if item and item.internal == "MANUALSAVE_LOADMANUALSAVE" then
+            -- Vanilla's handler pulls joypadData via JoypadState.getMainMenuJoypad()
+            -- from inside the click body — we do the same in onLoadManualSaveClick.
+            onLoadManualSaveClick(item, x, y)
+            return
+        end
+        return origMouseDown(item, x, y)
+    end
+
+    print("[ManualSaveMod] Main menu: joypad integration installed.")
+end
+
+Events.OnMainMenuEnter.Add(installJoypadIntegration)
 
 print("[ManualSaveMod] Hooks/MainMenuHook.lua loaded.")

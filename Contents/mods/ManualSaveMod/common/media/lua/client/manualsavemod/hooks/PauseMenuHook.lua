@@ -9,8 +9,17 @@ local labelHgt       = getTextManager():getFontHeight(UIFont.Large) + 16
 local labelSeparator = 16
 
 -- Replace the original ToggleEscapeMenu event listener with a wrapper that
--- intercepts ESC while our panels are open. We must Remove+Add because
+-- intercepts ESC for our remaining special cases. We must Remove+Add because
 -- Events.OnKeyPressed holds the original function reference, not the global name.
+--
+-- LoadScreen is now a sub-screen of MainScreen (makeScreenPanel/subScreenOf) so
+-- it handles ESC itself via Screen.lua's onKeyRelease — no wrapper code needed
+-- for the generic close. We only keep:
+--   - LoadScreen + inline rename in progress: ESC cancels the rename instead of
+--     closing the whole screen.
+--   - SaveScreen still uses the old fullscreen-overlay model (to be migrated):
+--     ESC must close it before falling through to vanilla ToggleEscapeMenu, or
+--     the pause menu would open behind it.
 local _origToggleEsc = ToggleEscapeMenu
 Events.OnKeyPressed.Remove(_origToggleEsc)
 local function _escWrapper(key)
@@ -22,9 +31,9 @@ local function _escWrapper(key)
             if st and st.renamingSlot then
                 local fn = ManualSave.LoadScreen._commitRename
                 if fn then fn(false) end
-            else
-                ManualSave.closeLoadScreen()
+                return
             end
+            -- Otherwise let Screen.lua's onKeyRelease close it (plays sound).
             return
         end
         if ManualSave._saveScreenOpen and ManualSave._saveScreenOpen() then
@@ -37,16 +46,22 @@ end
 ToggleEscapeMenu = _escWrapper
 Events.OnKeyPressed.Add(_escWrapper)
 
+-- joypadData (4th arg) is passed by PZ when the click originates from a
+-- gamepad A-press; nil for mouse clicks. The vanilla MainScreen->Settings
+-- pattern keeps the pause menu open underneath (its bottomPanel is hidden by
+-- makeScreenPanel/subScreenOf) and transfers joypad focus to our screen.
+-- Note: openSaveScreen doesn't accept joypadData yet — SaveScreen will be
+-- migrated to the subScreenOf pattern in a follow-up step. For now we still
+-- close the pause menu before opening it (vanilla-incompatible interim state).
 local function onSaveGameClick(_, _, _)
     getSoundManager():playUISound("UIActivateMainMenuItem")
     ToggleEscapeMenu(getCore():getKey("Main Menu"))
     ManualSave.openSaveScreen()
 end
 
-local function onLoadGameClick(_, _, _)
+local function onLoadGameClick(_, _, _, joypadData)
     getSoundManager():playUISound("UIActivateMainMenuItem")
-    ToggleEscapeMenu(getCore():getKey("Main Menu"))
-    ManualSave.openLoadScreen(false)
+    ManualSave.openLoadScreen(false, joypadData)
 end
 
 Events.OnGameStart.Add(function()

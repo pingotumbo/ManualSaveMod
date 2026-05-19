@@ -124,19 +124,26 @@ function ManualSave.makeCoverPanel(parent, opts)
     -- the cover panel just claims its rectangle and any pre-existing navigable
     -- widget under it is hidden automatically. Widgets OUTSIDE the cover area
     -- (e.g. footer buttons below it) can still be hidden via opts.hideTargets.
+    --
+    -- Coordinates must be ABSOLUTE: widgets nested inside sub-panels (toolbar
+    -- buttons, items in cols.left/cols.right, etc.) report getX/getY relative
+    -- to their direct parent, so we'd miss them with local coords.
     local autoPrev = {}
     if parentGroup then
-        local cx = tonumber(opts.x) or 0
-        local cy = tonumber(opts.y) or 0
-        local cw = tonumber(opts.w) or 0
-        local ch = tonumber(opts.h) or 0
+        local cx, cy, cw, ch = 0, 0, 0, 0
+        pcall(function()
+            cx = tonumber(panel:getAbsoluteX()) or 0
+            cy = tonumber(panel:getAbsoluteY()) or 0
+            cw = tonumber(panel:getWidth())     or 0
+            ch = tonumber(panel:getHeight())    or 0
+        end)
         for _, w in ipairs(parentGroup.items) do
             local inCover = false
             pcall(function()
-                local wx = tonumber(w:getX())     or 0
-                local wy = tonumber(w:getY())     or 0
-                local ww = tonumber(w:getWidth()) or 0
-                local wh = tonumber(w:getHeight()) or 0
+                local wx = tonumber(w:getAbsoluteX()) or 0
+                local wy = tonumber(w:getAbsoluteY()) or 0
+                local ww = tonumber(w:getWidth())     or 0
+                local wh = tonumber(w:getHeight())    or 0
                 inCover = wx < cx + cw and wx + ww > cx
                       and wy < cy + ch and wy + wh > cy
             end)

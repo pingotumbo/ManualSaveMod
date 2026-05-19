@@ -272,7 +272,6 @@ function ManualSave.openNameInputDialog(opts)
             x = W - TH.PAD - 22, y = TH.PAD - 2,
             w = 22, h = 22,
             label = "?", style = "normal",
-            focusGroup = false,
             onClick = function()
                 if ManualSave.openHelpScreen then ManualSave.openHelpScreen(opts.helpSection) end
             end,

@@ -65,7 +65,7 @@ function ManualSave.InputNav.installPanelNav(innerPanel, obj, opts)
     innerPanel._inputNavGroup = group
 
     local origOpen = obj.open
-    obj.open = function()
+    obj.open = function(...)
         -- Drain any deferred registrations (widgets that must sit at the END of
         -- the tab order, e.g. floating panels' X button). They are added at open
         -- time so they land after all content widgets created by the caller.
@@ -74,7 +74,8 @@ function ManualSave.InputNav.installPanelNav(innerPanel, obj, opts)
             innerPanel._inputNavDeferred = nil
         end
         ManualSave.InputNav.pushActive(nav)
-        if origOpen then origOpen() end
+        -- Forward all caller-supplied args (e.g. joypadData for sub-screens).
+        if origOpen then origOpen(...) end
     end
 
     -- Helper exposed on the inner panel so callers (panel factories) can request
