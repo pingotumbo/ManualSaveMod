@@ -149,6 +149,8 @@ function ManualSave.LoadTracker.writePendingSession(slot, world, gmode, sid)
 end
 
 function ManualSave.LoadTracker.writeSession(slot, world, gmode, sid)
+    print(string.format("[MSM-SESS] writeSession slot=%s world=%s gmode=%s sid=%s",
+        tostring(slot), tostring(world), tostring(gmode), tostring(sid)))
     local w = getFileWriter(SESSION_FILE, true, false)
     if not w then return end
     w:write("SLOT="  .. slot  .. "\r\n")
@@ -198,9 +200,19 @@ Events.OnMainMenuEnter.Add(function()
         local rfr = getFileReader(REENTER_FLAG, true)
         local reenterPending = false
         if rfr then reenterPending = rfr:readLine() ~= nil; rfr:close() end
+        print(string.format("[MSM-MENU] OnMainMenuEnter first time. reenterPending=%s",
+            tostring(reenterPending)))
         if not reenterPending then
             local s = ManualSave.LoadTracker.readSession()
+            if s then
+                print(string.format("[MSM-MENU] readSession: slot=%s world=%s gmode=%s sid=%s",
+                    tostring(s.slot), tostring(s.world), tostring(s.gmode), tostring(s.sessionId)))
+            else
+                print("[MSM-MENU] readSession: nil")
+            end
             if s and s.sessionId then
+                print(string.format("[MSM-MENU] sending SESSION_END slot=%s sid=%s",
+                    tostring(s.slot), tostring(s.sessionId)))
                 ManualSave.SignalBus.send("SESSION_END",
                     { GMODE=s.gmode, SLOT=s.slot, SESSION_ID=s.sessionId })
                 clearFile(SESSION_FILE)

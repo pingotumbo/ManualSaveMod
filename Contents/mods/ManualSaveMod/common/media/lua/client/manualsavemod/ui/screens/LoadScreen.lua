@@ -24,19 +24,38 @@ function ManualSave.openLoadScreen(fromMainMenu, joypadData)
         w=PW, h=PH,
         subScreenOf = "mainScreen",
         onKeyRelease = function(_, key)
-            local st = ManualSave.LoadScreen._state
-            local fromMM = st and st.fromMainMenu
-            if key == Keyboard.KEY_RETURN and fromMM then
-                if st and st.selected and not st.selected.CORRUPTED
-                    and ManualSave.SignalBus.isBatAlive() ~= false then
-                    ManualSave.LoadScreen.confirmLoad(st.selected)
+            local ls = ManualSave.LoadScreen
+            local st = ls and ls._state
+            if not st or not st.selected then return end
+            -- Selection-bound shortcuts. Only fire while LoadScreen is open
+            -- (this handler is on the LoadScreen panel itself, so it never
+            -- runs in normal gameplay) and while no inline edit / popup is
+            -- consuming text input.
+            if st.renamingSlot then return end
+            local alive = ManualSave.SignalBus.isBatAlive() ~= false
+            -- Enter: Load the selected save (only when launched from main menu;
+            -- in-game Enter is reserved for vanilla chat / other PZ flows).
+            if key == Keyboard.KEY_RETURN and st.fromMainMenu then
+                if not st.selected.CORRUPTED and alive then
+                    ls.confirmLoad(st.selected)
                 end
+                return
             end
-            if key == Keyboard.KEY_F2 and fromMM then
-                if st and st.selected then
-                    local fn = ManualSave.LoadScreen._beginRename
-                    if fn then fn() end
-                end
+            -- F2: rename inline.
+            if key == Keyboard.KEY_F2 then
+                if alive and ls._beginRename then ls._beginRename() end
+                return
+            end
+            -- Delete: confirm delete.
+            if key == Keyboard.KEY_DELETE then
+                if alive and ls._doDelete then ls._doDelete() end
+                return
+            end
+            -- Ctrl+D: duplicate.
+            if key == Keyboard.KEY_D
+                and (isKeyDown(Keyboard.KEY_LCONTROL) or isKeyDown(Keyboard.KEY_RCONTROL)) then
+                if alive and ls._doClone then ls._doClone() end
+                return
             end
         end,
     })

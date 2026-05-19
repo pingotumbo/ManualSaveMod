@@ -31,8 +31,17 @@ end
 ---@param slot   string
 ---@param onDone fun(status:string)?
 function ManualSave.SaveManager.load(gmode, world, slot, onDone)
-    local LT     = ManualSave.LoadTracker
-    local inGame = MainScreen.instance and not MainScreen.instance:isVisible()
+    local LT = ManualSave.LoadTracker
+    -- "in game" means there's a live player object — i.e. a world is currently
+    -- loaded. Do NOT use MainScreen.instance:isVisible() here: as soon as we
+    -- added the sub-screen pattern, MainScreen stays visible behind the pause
+    -- menu (and is hidden during the death screen), so isVisible() gives the
+    -- wrong answer in both cases. Result of using isVisible(): the in-game
+    -- branch (quit + writePendingLoad + restart) didn't fire when expected,
+    -- and the user saw the load animation/sound but the game never actually
+    -- reloaded until they pressed Esc. getPlayer() is the canonical "is a
+    -- world loaded?" check and survives any UI refactor.
+    local inGame = getPlayer() ~= nil
     if inGame then pcall(save, true) end
 
     ManualSave.SignalBus.send(
@@ -134,12 +143,15 @@ end
 ---@return table[]
 function ManualSave.SaveManager.listSaves()
     local index = ManualSave.MetaCache.listSaves()
+    print(string.format("[MSM-LIST] listSaves: index has %d entries", #index))
     local result = {}
     for _, entry in ipairs(index) do
         local meta = ManualSave.MetaCache.read(entry.gameMode, entry.world, entry.slot) or {}
         meta.gameMode = entry.gameMode
         meta.world    = entry.world
         meta.slot     = entry.slot
+        print(string.format("[MSM-LIST]   gmode=%s world=%s slot=%s",
+            tostring(entry.gameMode), tostring(entry.world), tostring(entry.slot)))
         table.insert(result, meta)
     end
     return result

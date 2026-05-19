@@ -641,6 +641,20 @@
   "UI_MSM_Settings_SaveImageDesc":           "Scegli lo stile della miniatura del salvataggio.",
   "UI_MSM_Settings_ThumbScreenshotTitle":    "Screenshot live",
   "UI_MSM_Settings_ThumbPlaceholderTitle":   "Immagine predefinita",
+  "UI_MSM_Settings_SaveNameTitle":           "Nome predefinito salvataggio",
+  "UI_MSM_Settings_SaveNameDesc":            "Pre-compilato nel salvataggio. Aggiunge (1), (2) ... se gia' presente.",
+
+  "UI_MSM_Settings_NavShortcuts":            "Scorciatoie",
+  "UI_MSM_Settings_ShortcutQuickSaveTitle":  "Salvataggio rapido",
+  "UI_MSM_Settings_ShortcutQuickSaveDesc":   "Apre la schermata di salvataggio in gioco.",
+  "UI_MSM_Settings_ShortcutQuickLoadTitle":  "Caricamento rapido",
+  "UI_MSM_Settings_ShortcutQuickLoadDesc":   "Apre la schermata di caricamento in gioco.",
+  "UI_MSM_Settings_ShortcutsHint":           "Clicca un tasto e premi quello nuovo. Premi Escape per annullare.",
+  "UI_MSM_Settings_ShortcutsReset":          "Ripristina predefiniti",
+
+  "UI_MSM_KeyCapture_Title":  "Reimposta scorciatoia",
+  "UI_MSM_KeyCapture_Body":   "Premi un tasto qualsiasi per assegnarlo come nuova scorciatoia. Premi Escape per annullare.",
+  "UI_MSM_KeyCapture_Unbind": "Rimuovi assegnazione",
 
   "UI_MSM_Help_CatSettings":      "Impostazioni",
   "UI_MSM_Help_PageSettings":     "Panoramica",

@@ -120,6 +120,9 @@ local function settings_lines()
         { getText("UI_MSM_Help_Settings_08"), "sub"     },
         { getText("UI_MSM_Help_Settings_09"), "body"    },
         { "",                                           },
+        { getText("UI_MSM_Help_Settings_14"), "sub"     },
+        { getText("UI_MSM_Help_Settings_15"), "body"    },
+        { "",                                           },
         { getText("UI_MSM_Help_Settings_10"), "sub"     },
         { getText("UI_MSM_Help_Settings_11"), "body"    },
         { "",                                           },
@@ -188,6 +191,38 @@ local function backupdir_lines()
         { "",                                              },
         { getText("UI_MSM_Help_BackupDir_11"), "header"    },
         { getText("UI_MSM_Help_BackupDir_12"), "body"      },
+    }
+end
+
+local function shortcuts_lines()
+    return {
+        { getText("UI_MSM_Help_ShortcutsHlp_01"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_02"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_03"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_04"), "sub"       },
+        { getText("UI_MSM_Help_ShortcutsHlp_05"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_06"), "sub"       },
+        { getText("UI_MSM_Help_ShortcutsHlp_07"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_08"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_09"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_10"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_11"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_12"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_13"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_14"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_15"), "body"      },
+        { getText("UI_MSM_Help_ShortcutsHlp_16"), "check"     },
+        { getText("UI_MSM_Help_ShortcutsHlp_17"), "check"     },
+        { getText("UI_MSM_Help_ShortcutsHlp_18"), "check"     },
+        { getText("UI_MSM_Help_ShortcutsHlp_19"), "check"     },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_20"), "callout_g" },
     }
 end
 
@@ -366,6 +401,15 @@ local function loadscreen_lines()
         { getText("UI_MSM_Help_Loadscreen_11"), "check"    },
         { "",                                              },
         { getText("UI_MSM_Help_Loadscreen_12"), "callout_w"},
+        { "",                                              },
+        { getText("UI_MSM_Help_Loadscreen_13"), "header"   },
+        { getText("UI_MSM_Help_Loadscreen_14"), "body"     },
+        { getText("UI_MSM_Help_Loadscreen_15"), "check"    },
+        { getText("UI_MSM_Help_Loadscreen_16"), "check"    },
+        { getText("UI_MSM_Help_Loadscreen_17"), "check"    },
+        { getText("UI_MSM_Help_Loadscreen_18"), "check"    },
+        { "",                                              },
+        { getText("UI_MSM_Help_Loadscreen_19"), "dim"      },
     }
 end
 
@@ -577,6 +621,28 @@ local function recovery_lines()
     }
 end
 
+local function crashbackup_lines()
+    return {
+        { getText("UI_MSM_Help_CrashBackup_01"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_02"), "body"      },
+        { getText("UI_MSM_Help_CrashBackup_03"), "dim"       },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_04"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_05"), "body"      },
+        { getText("UI_MSM_Help_CrashBackup_06"), "callout_g" },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_07"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_08"), "body"      },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_09"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_10"), "body"      },
+        { getText("UI_MSM_Help_CrashBackup_11"), "warn"      },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_12"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_13"), "body"      },
+    }
+end
+
 -- TROUBLESHOOTING ──────────────────────────────────────────────────────────────
 
 local function trouble_lines()
@@ -733,10 +799,11 @@ local CATEGORIES = {
         { id="watcher_run", label=getText("UI_MSM_Help_PageWatcherRun"), lines=watcher_run_lines  },
     }},
     { id="settings", label=getText("UI_MSM_Help_CatSettings"), pages={
-        { id="settings",  label=getText("UI_MSM_Help_PageSettings"),   lines=settings_lines  },
-        { id="general",   label=getText("UI_MSM_Help_PageGeneral"),    lines=general_lines   },
-        { id="hudpos",    label=getText("UI_MSM_Help_PageHudPos"),      lines=hudpos_lines    },
-        { id="backupdir", label=getText("UI_MSM_Help_PageBackupDir"),   lines=backupdir_lines },
+        { id="settings",      label=getText("UI_MSM_Help_PageSettings"),     lines=settings_lines  },
+        { id="general",       label=getText("UI_MSM_Help_PageGeneral"),      lines=general_lines   },
+        { id="hudpos",        label=getText("UI_MSM_Help_PageHudPos"),       lines=hudpos_lines    },
+        { id="backupdir",     label=getText("UI_MSM_Help_PageBackupDir"),    lines=backupdir_lines },
+        { id="shortcuts_hlp", label=getText("UI_MSM_Help_PageShortcutsHlp"), lines=shortcuts_lines },
     }},
     { id="save",     label=getText("UI_MSM_Help_CatSave"),     pages={
         { id="quicksave",   label=getText("UI_MSM_Help_PageQuicksave"),  lines=quicksave_lines   },
@@ -758,7 +825,8 @@ local CATEGORIES = {
         { id="editmods",    label=getText("UI_MSM_Help_PageEditMods"),   lines=editmods_lines    },
     }},
     { id="recovery", label=getText("UI_MSM_Help_CatRecovery"), pages={
-        { id="recovery",    label=getText("UI_MSM_Help_PageRecovery"),   lines=recovery_lines    },
+        { id="recovery",    label=getText("UI_MSM_Help_PageRecovery"),    lines=recovery_lines     },
+        { id="crashbackup", label=getText("UI_MSM_Help_PageCrashBackup"), lines=crashbackup_lines  },
     }},
     { id="trouble",  label=getText("UI_MSM_Help_CatTrouble"),  pages={
         { id="trouble",     label=getText("UI_MSM_Help_PageTrouble"),    lines=trouble_lines     },

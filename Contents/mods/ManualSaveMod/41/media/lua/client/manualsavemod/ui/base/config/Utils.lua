@@ -36,6 +36,29 @@ function ManualSave.nextCopyName(baseSlot, saves)
     return base
 end
 
+-- Returns the first available name in the sequence:
+--   base, base (1), base (2), ...
+-- Used when pre-filling the SaveScreen name field with a sensible default the
+-- user can either accept or overwrite. Pattern matches the "Save / Save (1)"
+-- convention common in many save dialogs (and distinct from nextCopyName
+-- which uses _copy / _copy_(N) for duplicate operations).
+---@param base string
+---@param saves table
+---@return string
+function ManualSave.nextAvailableName(base, saves)
+    if not base or base == "" then base = "Save" end
+    local taken = {}
+    for _, s in ipairs(saves) do taken[s.slot] = true end
+    if not taken[base] then return base end
+    local n = 1
+    repeat
+        local c = base .. " (" .. n .. ")"
+        if not taken[c] then return c end
+        n = n + 1
+    until n > 999
+    return base
+end
+
 -- Safe wrapper around getText. Returns the raw key string (never nil) if the
 -- key is missing from the current language, and logs a warning so missing
 -- translations are visible in console.txt.

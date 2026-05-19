@@ -239,12 +239,14 @@ function Add-VanillaOwned($gmode, $world, $slot, $sessionId) {
     $entry = "$gmode|$world|$slot|$sessionId"
     $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
     if ($owned -notcontains $entry) { Add-Content $VANILLA_OWNED $entry }
+    Write-Host "[ManualSave_Watcher][AUDIT] VanillaOwned ADD: $entry"
 }
 
 # $sessionId = $null  -> match any session for this gmode+slot
 function Remove-VanillaOwned($gmode, $slot, $sessionId = $null) {
     $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
-    if (-not $owned) { return }
+    if (-not $owned) { Write-Host "[ManualSave_Watcher][AUDIT] VanillaOwned REMOVE (file empty) gmode=$gmode slot=$slot sid=$sessionId"; return }
+    $beforeCount = ($owned | Measure-Object).Count
     $gEsc = [regex]::Escape($gmode); $sEsc = [regex]::Escape($slot)
     if ($sessionId) {
         $idEsc = [regex]::Escape($sessionId)
@@ -252,18 +254,25 @@ function Remove-VanillaOwned($gmode, $slot, $sessionId = $null) {
     } else {
         ($owned | Where-Object { $_ -notmatch "^$gEsc\|[^|]*\|$sEsc\|" }) | Set-Content $VANILLA_OWNED
     }
+    $after = Get-Content $VANILLA_OWNED -EA SilentlyContinue
+    $afterCount = if ($after) { ($after | Measure-Object).Count } else { 0 }
+    Write-Host "[ManualSave_Watcher][AUDIT] VanillaOwned REMOVE gmode=$gmode slot=$slot sid=$sessionId removed=$($beforeCount - $afterCount)"
 }
 
 # $sessionId = $null  -> match any session for this gmode+slot
 function Test-VanillaOwned($gmode, $slot, $sessionId = $null) {
     $owned = Get-Content $VANILLA_OWNED -EA SilentlyContinue
-    if (-not $owned) { return $false }
+    if (-not $owned) { Write-Host "[ManualSave_Watcher][AUDIT] VanillaOwned TEST (empty) gmode=$gmode slot=$slot sid=$sessionId -> FALSE"; return $false }
     $gEsc = [regex]::Escape($gmode); $sEsc = [regex]::Escape($slot)
+    $result = $false
     if ($sessionId) {
         $idEsc = [regex]::Escape($sessionId)
-        return [bool]($owned | Where-Object { $_ -match "^$gEsc\|[^|]*\|$sEsc\|$idEsc$" })
+        $result = [bool]($owned | Where-Object { $_ -match "^$gEsc\|[^|]*\|$sEsc\|$idEsc$" })
+    } else {
+        $result = [bool]($owned | Where-Object { $_ -match "^$gEsc\|[^|]*\|$sEsc\|" })
     }
-    return [bool]($owned | Where-Object { $_ -match "^$gEsc\|[^|]*\|$sEsc\|" })
+    Write-Host "[ManualSave_Watcher][AUDIT] VanillaOwned TEST gmode=$gmode slot=$slot sid=$sessionId -> $result"
+    return $result
 }
 
 function Get-VanillaOwnedEntries {
@@ -509,6 +518,9 @@ while ($true) {
     switch ($ACTION.ToUpper()) {
         'SAVE' {
             $liveWorld = if ($p['LIVE_WORLD']) { $p['LIVE_WORLD'] } else { $WORLD }
+            $sessClose = if ($p['SESSION_CLOSE']) { $p['SESSION_CLOSE'] } else { '' }
+            $sessIdIn  = if ($p['SESSION_ID']) { $p['SESSION_ID'] } else { '' }
+            Write-Host "[ManualSave_Watcher][AUDIT] SAVE begin: gmode=$GMODE world=$WORLD slot=$SLOT liveWorld=$liveWorld sessionClose=$sessClose sessionId=$sessIdIn"
             $src = "$SAVES\$GMODE\$liveWorld"
             $dst = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] ERROR: save folder not found: $src"; break }
@@ -583,16 +595,32 @@ while ($true) {
             }
             Write-Done "OK" "SAVE" @{ SLOT = $SLOT; THUMB_FILE = $thumbFile }
             if ($p['SESSION_CLOSE'] -eq '1') {
-                $sid = $p['SESSION_ID']
-                if ($sid -and (Test-VanillaOwned $GMODE $SLOT $sid)) {
-                    $vp = "$SAVES\$GMODE\$SLOT"
-                    if (Test-Path -LiteralPath $vp) { Remove-Item -LiteralPath $vp -Recurse -Force }
-                    Remove-VanillaOwned $GMODE $SLOT $sid
-                    Write-Host "[ManualSave_Watcher] SESSION_CLOSE: vanilla slot removed."
+                $sid       = $p['SESSION_ID']
+                $preserve  = ($p['SESSION_PRESERVE_VANILLA'] -eq '1')
+                # The slot stored as VanillaOwned is the slot that was LOADED
+                # (i.e. the one whose folder is in $SAVES). It can differ from
+                # the SAVE target slot ($SLOT) when the user does Full Save
+                # under a different name. Use liveWorld for the vanilla path.
+                Write-Host "[ManualSave_Watcher][AUDIT] SAVE SESSION_CLOSE: liveWorld=$liveWorld sid=$sid preserve=$preserve"
+                if ($sid -and (Test-VanillaOwned $GMODE $liveWorld $sid)) {
+                    if ($preserve) {
+                        # Vanilla Continue button needs $SAVES\$GMODE\$liveWorld
+                        # to remain on disk to load this game next time. Drop
+                        # the VanillaOwned entry so SESSION_END later doesn't
+                        # delete the folder, but DO NOT remove the folder now.
+                        Remove-VanillaOwned $GMODE $liveWorld $sid
+                        Write-Host "[ManualSave_Watcher] SESSION_CLOSE: vanilla folder preserved for Continue (slot=$liveWorld)."
+                    } else {
+                        $vp = "$SAVES\$GMODE\$liveWorld"
+                        if (Test-Path -LiteralPath $vp) { Remove-Item -LiteralPath $vp -Recurse -Force }
+                        Remove-VanillaOwned $GMODE $liveWorld $sid
+                        Write-Host "[ManualSave_Watcher] SESSION_CLOSE: vanilla slot removed."
+                    }
                 }
             }
         }
         'LOAD' {
+            Write-Host "[ManualSave_Watcher][AUDIT] LOAD begin: gmode=$GMODE world=$WORLD slot=$SLOT"
             $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             $dst = "$SAVES\$GMODE\$SLOT"
             if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] ERROR: backup not found: $src"; break }
@@ -600,6 +628,7 @@ while ($true) {
             if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] ERROR: robocopy failed, code $LASTEXITCODE"; break }
             Write-Host "[ManualSave_Watcher] RESTORE complete: $dst"
             $sessionId = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
+            Write-Host "[ManualSave_Watcher][AUDIT] LOAD new sessionId=$sessionId"
             Remove-VanillaOwned $GMODE $SLOT   # clear any stale entry for this slot
             Add-VanillaOwned $GMODE $WORLD $SLOT $sessionId
             $safeSlot  = $SLOT -replace '[\\/ ]', '_'
@@ -624,11 +653,19 @@ while ($true) {
         }
         'SESSION_END' {
             $sid = $p['SESSION_ID']
+            Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END begin: gmode=$GMODE slot=$SLOT sessionId=$sid"
             if ($sid -and (Test-VanillaOwned $GMODE $SLOT $sid)) {
                 $vp = "$SAVES\$GMODE\$SLOT"
-                if (Test-Path -LiteralPath $vp) { Remove-Item -LiteralPath $vp -Recurse -Force }
+                if (Test-Path -LiteralPath $vp) {
+                    Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END deleting vanilla folder: $vp"
+                    Remove-Item -LiteralPath $vp -Recurse -Force
+                } else {
+                    Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END vanilla folder not found: $vp"
+                }
                 Remove-VanillaOwned $GMODE $SLOT $sid
                 Write-Host "[ManualSave_Watcher] SESSION_END: vanilla slot removed."
+            } else {
+                Write-Host "[ManualSave_Watcher][AUDIT] SESSION_END no-op (sid missing or not owned)."
             }
             Write-Done "OK" "SESSION_END"
         }

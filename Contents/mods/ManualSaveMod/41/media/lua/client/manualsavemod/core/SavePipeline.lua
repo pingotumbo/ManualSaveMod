@@ -110,7 +110,23 @@ local function executeSave(ctx)
             if not ctx.reenter and sid then
                 params.SESSION_CLOSE = "1"
                 params.SESSION_ID    = sid
+                -- The vanilla folder we are about to leave behind contains a
+                -- freshly-flushed save (PZ called save() right before quit), so
+                -- it's a legitimate continuation point for vanilla's Continue
+                -- button. Ask the watcher to drop its VanillaOwned entry for
+                -- this slot WITHOUT deleting the folder. Without this flag,
+                -- SESSION_END on the next launch would wipe the folder and
+                -- vanilla Continue would fail with "save invalid".
+                params.SESSION_PRESERVE_VANILLA = "1"
             end
+            print(string.format(
+                "[MSM-FULL] FULL_SAVE ctx.slot=%s ctx.world=%s ctx.liveWorld=%s ctx.gmode=%s reenter=%s sid=%s",
+                tostring(ctx.slot), tostring(ctx.world), tostring(ctx.liveWorld),
+                tostring(ctx.gmode), tostring(ctx.reenter), tostring(sid)))
+            print(string.format(
+                "[MSM-FULL] params: SESSION_CLOSE=%s SESSION_ID=%s LIVE_WORLD=%s",
+                tostring(params.SESSION_CLOSE), tostring(params.SESSION_ID),
+                tostring(params.LIVE_WORLD)))
             local fw = getFileWriter(FULLSAVE_PENDING, true, false)
             if fw then fw:write("SLOT=" .. ctx.slot .. "\r\n"); fw:close() end
             ManualSave.SignalBus.send("SAVE", params)

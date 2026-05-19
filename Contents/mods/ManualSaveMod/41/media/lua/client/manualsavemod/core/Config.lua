@@ -20,6 +20,9 @@ local DEFAULTS = {
     HUD_HIDDEN        = "0",
     BACKUP_DIR        = "",
     VERBOSE_LOG       = "0",
+    SAVE_NAME_DEFAULT = "Save",        -- prefix pre-filled in SaveScreen
+    SHORTCUT_QUICK_SAVE = "K",         -- key letter / F1..F12 / "" disables
+    SHORTCUT_QUICK_LOAD = "F9",
 }
 
 local _data = nil

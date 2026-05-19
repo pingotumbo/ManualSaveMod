@@ -102,7 +102,7 @@ function ManualSave.openConfirmDialog(opts)
         end,
     })
 
-    local cancelObj = ManualSave.makeButton(p, {
+    local cancelObj = (not opts._infoOnly) and ManualSave.makeButton(p, {
         x = W - (btnW + TH.PAD) * 2 - TH.GAP,
         y = btnY,
         w = btnW, h = btnH,
@@ -116,9 +116,10 @@ function ManualSave.openConfirmDialog(opts)
     })
 
     -- Register in visual left-to-right order and focus Confirm by default.
+    -- Info-only dialogs (single OK button) skip the cancel registration.
     local btnGroup = p._inputNavGroup
     if btnGroup then
-        btnGroup:add(cancelObj.btn)
+        if cancelObj then btnGroup:add(cancelObj.btn) end
         btnGroup:add(confirmObj.btn)
         btnGroup:setFocus(confirmObj.btn)
     end
@@ -136,6 +137,151 @@ function ManualSave.openConfirmDialog(opts)
 
     d.onClose(function()
         if opts.onCancel then pcall(opts.onCancel) end
+    end)
+
+    d.open()
+    return d
+end
+
+-- Opens a blocking info dialog with a single OK button.
+--
+-- opts:
+--   title    string
+--   body     string         one or more lines (auto-wraps)
+--   ok       string?        OK button label (default "OK")
+--   onClose  fun()?         called after the dialog closes
+--
+-- Simple wrapper around openConfirmDialog: re-uses the same modal layout but
+-- hides the Cancel button so the user sees a single primary action. Use for
+-- read-only notifications like crash-recovery alerts.
+function ManualSave.openInfoDialog(opts)
+    return ManualSave.openConfirmDialog({
+        title     = opts.title,
+        body      = opts.body,
+        confirm   = opts.ok or "OK",
+        cancel    = "",
+        onConfirm = function() if opts.onClose then pcall(opts.onClose) end end,
+        onCancel  = function() if opts.onClose then pcall(opts.onClose) end end,
+        _infoOnly = true,
+    })
+end
+
+-- Opens a blocking modal that captures the next keyboard key pressed.
+--
+-- opts:
+--   title    string?       header text (default getText("UI_MSM_KeyCapture_Title"))
+--   body     string?       prompt text (default getText("UI_MSM_KeyCapture_Body"))
+--   onKey    fun(name:string)?   called with the short key name ("K", "F9", ...)
+--                                or "" if cleared via the Unbind button
+--   allowUnbind boolean?   if true, shows a "Clear binding" button
+--
+-- The dialog auto-installs a transient Events.OnKeyPressed listener that fires
+-- exactly once. Escape cancels without changing the binding. The modal is
+-- aggressive (dark overlay, click-outside disabled) so the user can hit any
+-- key without worrying about accidentally dismissing the popup.
+function ManualSave.openKeyCaptureDialog(opts)
+    opts = opts or {}
+    local TH = ManualSave.Theme
+
+    local function codeToName(code)
+        if not Keyboard then return "" end
+        for k, v in pairs(Keyboard) do
+            if v == code and type(k) == "string" then
+                return (k:gsub("^KEY_", ""))
+            end
+        end
+        return ""
+    end
+
+    local title = opts.title or getText("UI_MSM_KeyCapture_Title")
+    local body  = opts.body  or getText("UI_MSM_KeyCapture_Body")
+
+    local cancelLabel = getText("UI_MSM_Common_BtnCancel")
+    local unbindLabel = getText("UI_MSM_KeyCapture_Unbind")
+    local cancelW = ManualSave.textBtnW(cancelLabel, 80)
+    local unbindW = ManualSave.textBtnW(unbindLabel, 100)
+    local W = math.max(360, TH.PAD * 2 + cancelW + TH.GAP + unbindW)
+    local lineH     = TH.FONT_HGT_SMALL + 4
+    local bodyY     = TH.PAD + TH.FONT_HGT_MEDIUM + TH.GAP * 2
+    local bodyLines = wrapBody(body, W - TH.PAD * 2)
+    local H = math.max(170, bodyY + #bodyLines * lineH + 48 + TH.GAP)
+
+    local d = ManualSave.makeModalPanel({ w=W, h=H })
+    local p = d.panel
+
+    local done = false
+    local listener
+    local function finish(name)
+        if done then return end
+        done = true
+        if listener then
+            Events.OnKeyPressed.Remove(listener)
+            listener = nil
+        end
+        d.close()
+        if name ~= nil and opts.onKey then pcall(opts.onKey, name) end
+    end
+
+    p.prerender = function(self2)
+        ISPanel.prerender(self2)
+        local ty = TH.PAD
+        self2:drawText(title,
+            TH.PAD, ty, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1, UIFont.Medium)
+        local by = ty + TH.FONT_HGT_MEDIUM + TH.GAP * 2
+        for _, line in ipairs(bodyLines) do
+            self2:drawText(line, TH.PAD, by,
+                TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 1, UIFont.Small)
+            by = by + lineH
+        end
+        ManualSave.Draw.separator(self2, 0, H - 48, W, 0.4)
+    end
+
+    local btnY = H - 38
+    local btnH = TH.BUTTON_HGT
+
+    local cancelObj = ManualSave.makeButton(p, {
+        x = TH.PAD, y = btnY, w = cancelW, h = btnH,
+        label = cancelLabel, style = "normal",
+        focusGroup = false,
+        onClick = function() finish(nil) end,
+    })
+
+    local unbindObj
+    if opts.allowUnbind then
+        unbindObj = ManualSave.makeButton(p, {
+            x = W - TH.PAD - unbindW, y = btnY, w = unbindW, h = btnH,
+            label = unbindLabel, style = "danger",
+            focusGroup = false,
+            onClick = function() finish("") end,
+        })
+    end
+
+    local btnGroup = p._inputNavGroup
+    if btnGroup then
+        btnGroup:add(cancelObj.btn)
+        if unbindObj then btnGroup:add(unbindObj.btn) end
+        btnGroup:setFocus(cancelObj.btn)
+    end
+
+    -- The OnKeyPressed listener is what actually captures the binding. Buttons
+    -- in the modal still receive their own clicks via mouse/joypad.
+    listener = function(key)
+        if done then return end
+        if key == Keyboard.KEY_ESCAPE then
+            finish(nil)
+            return
+        end
+        local name = codeToName(key)
+        if name == "" then return end
+        finish(name)
+    end
+    Events.OnKeyPressed.Add(listener)
+
+    d.onClose(function()
+        if listener then
+            Events.OnKeyPressed.Remove(listener)
+            listener = nil
+        end
     end)
 
     d.open()

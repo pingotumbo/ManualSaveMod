@@ -472,4 +472,66 @@ function ManualSave.makeToggleCard(parent, opts)
     return card
 end
 
+-- Key-rebind button.
+--
+-- A simple two-state button: idle (shows the currently-bound key name) and
+-- capturing (shows a "Press a key..." prompt and listens for the next key).
+--
+-- opts:
+--   x, y, w, h  number
+--   getValue    fun():string         current binding (e.g. "K", "F9", "")
+--   onChange    fun(newKey:string)   called when a new key is captured
+--   empty       string?              label when binding is empty (default "—")
+--   title       string?              modal title (default localized)
+--   body        string?              modal prompt (default localized)
+--
+-- Activating the button (mouse click, Enter, A on gamepad) opens an aggressive
+-- modal popup that captures the next keyboard key pressed. The modal includes
+-- a Cancel button and a "Clear binding" button so the user can unbind the
+-- shortcut entirely. The label on this button auto-refreshes when the bound
+-- value changes (via update() polling).
+---@param parent ISPanel
+---@param opts table
+---@return { btn:ISButton, setValue:fun(key:string) }
+function ManualSave.makeKeyBindButton(parent, opts)
+    local function currentLabel()
+        local v = opts.getValue and opts.getValue() or ""
+        if v == "" then return opts.empty or "—" end
+        return v
+    end
+
+    local btn = ManualSave.makeButton(parent, {
+        x=opts.x, y=opts.y, w=opts.w, h=opts.h,
+        label = currentLabel(),
+        style = "normal",
+        onClick = function()
+            ManualSave.openKeyCaptureDialog({
+                title = opts.title,
+                body  = opts.body,
+                allowUnbind = true,
+                onKey = function(name)
+                    if opts.onChange then pcall(opts.onChange, name) end
+                end,
+            })
+        end,
+    })
+    -- Keep label in sync if external state changes (e.g. Reset to defaults).
+    local prev = nil
+    local origUpdate = btn.btn.update
+    btn.btn.update = function(self2)
+        if origUpdate then origUpdate(self2) end
+        local v = opts.getValue and opts.getValue() or ""
+        if v ~= prev then
+            prev = v
+            self2:setTitle(currentLabel())
+        end
+    end
+
+    local obj = { btn = btn.btn }
+    function obj.setValue(v)
+        if opts.onChange then pcall(opts.onChange, v) end
+    end
+    return obj
+end
+
 print("[ManualSaveMod] UI/Base/Widgets/Elements/Button.lua loaded.")

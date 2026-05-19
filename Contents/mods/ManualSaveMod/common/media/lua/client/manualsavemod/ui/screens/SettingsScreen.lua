@@ -10,10 +10,11 @@ local W, H  = 640, 560
 local NAV_W = 148
 
 local SECTIONS = {
-    { id="general",  labelKey="UI_MSM_Settings_NavGeneral"  },
-    { id="progress", labelKey="UI_MSM_Settings_NavProgress" },
-    { id="paths",    labelKey="UI_MSM_Settings_NavPaths"    },
-    { id="advanced", labelKey="UI_MSM_Settings_NavAdvanced" },
+    { id="general",   labelKey="UI_MSM_Settings_NavGeneral"   },
+    { id="progress",  labelKey="UI_MSM_Settings_NavProgress"  },
+    { id="paths",     labelKey="UI_MSM_Settings_NavPaths"     },
+    { id="shortcuts", labelKey="UI_MSM_Settings_NavShortcuts" },
+    { id="advanced",  labelKey="UI_MSM_Settings_NavAdvanced"  },
 }
 
 function ManualSave.openSettingsScreen(joypadData)
@@ -111,10 +112,11 @@ function ManualSave.openSettingsScreen(joypadData)
     local sh = ch - footerH
 
     local builders = {
-        general  = ManualSave.makeSettingsGeneral,
-        progress = ManualSave.makeSettingsProgress,
-        paths    = ManualSave.makeSettingsPaths,
-        advanced = ManualSave.makeSettingsAdvanced,
+        general   = ManualSave.makeSettingsGeneral,
+        progress  = ManualSave.makeSettingsProgress,
+        paths     = ManualSave.makeSettingsPaths,
+        shortcuts = ManualSave.makeSettingsShortcuts,
+        advanced  = ManualSave.makeSettingsAdvanced,
     }
     for _, sec in ipairs(SECTIONS) do
         local sp = builders[sec.id](d.panel, { x=sx, y=cy, w=sw, h=sh })

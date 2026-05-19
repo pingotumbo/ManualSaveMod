@@ -67,13 +67,21 @@ function ManualSave.openSaveScreen(joypadData)
         r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B,
     })
 
-    -- Name input
+    -- Name input. Pre-filled with the user's configured default name (or
+    -- "Save" if blank), auto-incremented to the next free slot — Save,
+    -- Save (1), Save (2), ... — so the user can just press Confirm without
+    -- having to type anything.
+    local defaultBase  = ManualSave.Config.get("SAVE_NAME_DEFAULT")
+    if not defaultBase or defaultBase == "" then defaultBase = "Save" end
+    local existingSaves = ManualSave.SaveManager.listSaves() or {}
+    local presetName    = ManualSave.nextAvailableName(defaultBase, existingSaves)
     local nameInput = ManualSave.makeTextInput(p, {
         x           = TH.PAD,
         y           = y0 + TH.FONT_HGT_SMALL + TH.GAP,
         w           = W - TH.PAD * 2,
         h           = TH.BUTTON_HGT,
         placeholder = getText("UI_MSM_Save_Placeholder"),
+        value       = presetName,
     })
 
     -- Quick Save toggle + "?" info button

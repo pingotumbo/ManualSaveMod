@@ -195,6 +195,8 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
 
     ManualSave.LoadScreen._beginRename  = beginRenameInline
     ManualSave.LoadScreen._commitRename = commitRename
+    ManualSave.LoadScreen._doDelete     = doDelete
+    ManualSave.LoadScreen._doClone      = doClone
 end
 
 print("[ManualSaveMod] UI/Base/Widgets/Sections/SaveDetailPanel.lua loaded.")
