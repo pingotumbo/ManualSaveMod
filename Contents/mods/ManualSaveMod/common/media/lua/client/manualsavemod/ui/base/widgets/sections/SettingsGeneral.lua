@@ -11,7 +11,7 @@ function ManualSave.makeSettingsGeneral(parent, opts)
     local p     = ManualSave.makeScrollPanel(parent, {
         x=opts.x, y=opts.y, w=w, h=opts.h, border=false, bg={r=0,g=0,b=0,a=0},
     })
-    local ROW_H = TH.FONT_HGT_SMALL * 2 + 28
+    local ROW_H = TH.FONT_HGT_SMALL * 2 + 18
     local cy    = TH.PAD
 
     ManualSave.makeLabel(p, {
@@ -40,8 +40,50 @@ function ManualSave.makeSettingsGeneral(parent, opts)
         cy = cy + ROW_H
     end
 
-    cy = cy + TH.GAP * 3
+    cy = cy + TH.GAP
 
+    -- Divider before "Default save name"
+    ManualSave.makePanel(p, {
+        x=0, y=cy, w=w, h=1,
+        bg={r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=0.4}, border=false,
+    })
+    cy = cy + 1 + TH.GAP
+
+    -- Default save name: pre-fills the SaveScreen name field. Auto-increments
+    -- to "Name (1)", "Name (2)", ... if a slot with the base name already
+    -- exists. Stored as a plain string in Config; empty falls back to "Save"
+    -- via the SaveScreen pre-fill helper.
+    ManualSave.makeLabel(p, {
+        x=14, y=cy, w=w-28,
+        getText = function() return getText("UI_MSM_Settings_SaveNameTitle") end,
+        r=TH.TEXT_R, g=TH.TEXT_G, b=TH.TEXT_B, a=1,
+    })
+    cy = cy + TH.FONT_HGT_SMALL + 2
+    ManualSave.makeLabel(p, {
+        x=14, y=cy, w=w-28,
+        getText = function() return getText("UI_MSM_Settings_SaveNameDesc") end,
+        r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.8,
+    })
+    cy = cy + TH.FONT_HGT_SMALL + TH.GAP
+
+    do
+        local cur = ManualSave.Config.get("SAVE_NAME_DEFAULT")
+        if not cur or cur == "" then
+            cur = "Save"
+            ManualSave.Config.set("SAVE_NAME_DEFAULT", cur)
+        end
+        ManualSave.makeTextInput(p, {
+            x=14, y=cy, w=w-28, h=TH.BUTTON_HGT,
+            value       = cur,
+            placeholder = "Save",
+            onChange    = function(text)
+                ManualSave.Config.set("SAVE_NAME_DEFAULT", text or "")
+            end,
+        })
+    end
+    cy = cy + TH.BUTTON_HGT + TH.GAP
+
+    -- Divider before "Save image"
     ManualSave.makePanel(p, {
         x=0, y=cy, w=w, h=1,
         bg={r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=0.4}, border=false,
@@ -59,7 +101,7 @@ function ManualSave.makeSettingsGeneral(parent, opts)
         getText = function() return getText("UI_MSM_Settings_SaveImageDesc") end,
         r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.8,
     })
-    cy = cy + TH.FONT_HGT_SMALL + 2 + TH.GAP
+    cy = cy + TH.FONT_HGT_SMALL + TH.GAP
 
     ManualSave.makeOptionCards(p, {
         x=14, y=cy, w=w-28,
@@ -72,39 +114,7 @@ function ManualSave.makeSettingsGeneral(parent, opts)
               tex=getTexture("media/textures/MSM_ThumbPreview_Placeholder.png") },
         },
     })
-    cy = cy + 64 + 26 + TH.GAP * 3   -- cards prev + title + spacing
-
-    -- Divider before the next section
-    ManualSave.makePanel(p, {
-        x=0, y=cy, w=w, h=1,
-        bg={r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=0.4}, border=false,
-    })
-    cy = cy + 1 + TH.GAP
-
-    -- Default save name: pre-fills the SaveScreen name field. Auto-increments
-    -- to "Name (1)", "Name (2)", ... if a slot with the base name already
-    -- exists. Stored as a plain string in Config; empty falls back to "Save".
-    ManualSave.makeLabel(p, {
-        x=14, y=cy, w=w-28,
-        getText = function() return getText("UI_MSM_Settings_SaveNameTitle") end,
-        r=TH.TEXT_R, g=TH.TEXT_G, b=TH.TEXT_B, a=1,
-    })
-    cy = cy + TH.FONT_HGT_SMALL + 2
-    ManualSave.makeLabel(p, {
-        x=14, y=cy, w=w-28,
-        getText = function() return getText("UI_MSM_Settings_SaveNameDesc") end,
-        r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.8,
-    })
-    cy = cy + TH.FONT_HGT_SMALL + 2 + TH.GAP
-
-    ManualSave.makeTextInput(p, {
-        x=14, y=cy, w=w-28, h=TH.BUTTON_HGT,
-        value       = ManualSave.Config.get("SAVE_NAME_DEFAULT"),
-        placeholder = "Save",
-        onChange    = function(text)
-            ManualSave.Config.set("SAVE_NAME_DEFAULT", text or "")
-        end,
-    })
+    cy = cy + 64 + 26 + TH.GAP   -- card body (~64) + internal title (~26) + bottom gap
 
     return p
 end

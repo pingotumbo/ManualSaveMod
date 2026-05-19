@@ -11,7 +11,7 @@ function ManualSave.makeSettingsAdvanced(parent, opts)
     local p     = ManualSave.makeScrollPanel(parent, {
         x=opts.x, y=opts.y, w=w, h=opts.h, border=false, bg={r=0,g=0,b=0,a=0},
     })
-    local ROW_H = TH.FONT_HGT_SMALL * 2 + 28
+    local ROW_H = TH.FONT_HGT_SMALL * 2 + 18
     local cy    = TH.PAD
     local ss    = ManualSave.SettingsScreen
 

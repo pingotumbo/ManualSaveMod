@@ -1,5 +1,5 @@
 # ============================================================
-# ManualSave_Watcher.ps1 v1.4.0
+# ManualSave_Watcher.ps1 v1.5.0
 # External watcher for ManualSaveMod (Project Zomboid B42)
 # Screenshot logic inlined — ManualSave_Screenshot.ps1 no longer needed.
 # ============================================================
