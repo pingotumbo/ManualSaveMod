@@ -248,7 +248,13 @@ function ManualSave.makeFloatingPanel(opts)
         if p._inputNavRegisterAtEnd then p._inputNavRegisterAtEnd(xBtn) end
         -- Tell AnalogStick that the right stick should drag this panel when
         -- no focused widget consumes the scroll input.
-        if p._inputNav then p._inputNav._dragTarget = p end
+        if p._inputNav then
+            p._inputNav._dragTarget = p
+            -- Flag this manager as a floating window so the L1/R1 rotator
+            -- (in InputNav.lua) can include it when cycling between open
+            -- floating panels — non-floating screens are skipped.
+            p._inputNav._isFloating = true
+        end
     end
     -- Expose the X button so custom-nav callers can register it themselves.
     obj.xButton = xBtn

@@ -52,16 +52,21 @@ function ManualSave.openSettingsScreen(joypadData)
     --                  option cards, checkbox rows, ...). Hidden section
     --                  panels report isVisible()=false, so their widgets
     --                  are skipped by FocusGroup.isNavigable automatically.
-    -- Links: right from nav -> content; left from content -> nav.
+    -- Three horizontally-cycling groups: nav (left column) → content (right
+    -- column) → header (the X button) → nav. D-pad Right/Left cycles through
+    -- them in order so the user can reach every region without ever having to
+    -- press Up/Down at the right edge.
     local IN = ManualSave.InputNav
     local mgr, groups = IN.buildManager({
-        { id="nav",     layout="vertical", wrap=true },
-        { id="content", layout="vertical", wrap=true },
+        { id="nav",     layout="vertical",   wrap=true },
+        { id="content", layout="vertical",   wrap=true },
+        { id="header",  layout="horizontal", wrap=false },
     }, {
-        { from=1, on="right", to=2 },
-        { from=2, on="left",  to=1 },
+        { from=1, on="right", to=2 }, { from=2, on="left",  to=1 },
+        { from=2, on="right", to=3 }, { from=3, on="left",  to=2 },
+        { from=3, on="right", to=1 }, { from=1, on="left",  to=3 },
     })
-    local navGroup, contentGroup = groups[1], groups[2]
+    local navGroup, contentGroup, headerGroup = groups[1], groups[2], groups[3]
     mgr.onCancel = function() ManualSave.closeSettingsScreen() end
 
     -- Tag the inner panel so child widgets walking up via findNavGroup land in
@@ -69,6 +74,11 @@ function ManualSave.openSettingsScreen(joypadData)
     -- land in contentGroup. Each panel gets its own _inputNavGroup pointer.
     d.panel._inputNav      = mgr
     d.panel._inputNavGroup = contentGroup   -- safe default for footer-area widgets
+    -- Floating-compatible markers for AnalogStick drag + L1/R1 floating rotator
+    -- (Floating.lua sets these automatically only when installNav~=false; we
+    -- opted out and built a custom manager above, so wire them manually here).
+    mgr._dragTarget = d.panel
+    mgr._isFloating = true
 
     -- Push the manager when the floating panel opens; pop on close. Forward
     -- all args (joypadData) to the underlying open so floating joypad-focus
@@ -80,16 +90,9 @@ function ManualSave.openSettingsScreen(joypadData)
     end
     d.onClose(function() IN.popActive(mgr) end)
 
-    -- The X button lives in its own focus group so it's reachable from both
-    -- nav and content via Up (visual: top-right of the window), without ever
-    -- being part of either column's vertical tab order.
-    local headerGroup = IN.makeGroup({ id="header", layout="horizontal", wrap=true })
-    mgr:addGroup(headerGroup)
-    mgr:linkGroups({
-        { from = navGroup,     on = "up", to = headerGroup },
-        { from = contentGroup, on = "up", to = headerGroup },
-        { from = headerGroup,  on = "down", to = contentGroup },
-    })
+    -- The X (close) button is the only widget in the dedicated headerGroup,
+    -- so pressing Right from content (or Left from nav, wrapping around) lands
+    -- on it. A press closes the panel via the click handler set in Floating.
     if d.xButton then headerGroup:add(d.xButton) end
 
     -- makeSettingsNav builds a ScrollList registered as a single item in

@@ -194,7 +194,22 @@ function ManualSave.openLoadScreen(fromMainMenu, joypadData)
         if ManualSave.closeImportScreen  then ManualSave.closeImportScreen()  end
         if ManualSave.closeHelpScreen    then ManualSave.closeHelpScreen()    end
         if ManualSave.closeSettingsScreen then ManualSave.closeSettingsScreen() end
-        if wasInGame then setGameSpeed(1); setShowPausedMessage(true) end
+        -- Only resume time if we're truly returning to gameplay. When LoadScreen
+        -- was opened from the in-game pause menu, MainScreen (the vanilla pause
+        -- UI) is still visible below us; closing LoadScreen should put us back
+        -- on the pause menu, not unfreeze time. Vanilla MainScreen handles its
+        -- own setGameSpeed(0) while it's visible.
+        if wasInGame then
+            local pauseMenuVisible = false
+            pcall(function()
+                pauseMenuVisible = MainScreen and MainScreen.instance
+                    and MainScreen.instance:isVisible() and MainScreen.instance.inGame
+            end)
+            if not pauseMenuVisible then
+                setGameSpeed(1)
+                setShowPausedMessage(true)
+            end
+        end
     end)
 
     ManualSave.LoadScreen._state.saves = ManualSave.SaveManager.listSaves()

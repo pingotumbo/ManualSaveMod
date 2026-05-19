@@ -34,25 +34,19 @@ end
 --   2. The first visible widget in the active group that implements
 --      onAnalogScroll (so the right stick still scrolls the save list when
 --      keyboard focus is on a nearby button).
+-- Find the scroll target. Strict rule: only the widget the user is CURRENTLY
+-- focused on (mgr.current.items[mgr.current.index]) is considered. Without
+-- this we used to fall back to "any group widget that exposes onAnalogScroll",
+-- which made the right stick always scroll the nav list of every multi-group
+-- screen (Settings/Help/Import) and never drag the floating panel. Now the
+-- stick only scrolls when you've explicitly parked the focus on a scrollable.
 local function findScrollTarget()
     local IN = ManualSave.InputNav
     if not IN or not IN.activeManager then return nil end
     local mgr = IN.activeManager()
-    if not mgr then return nil end
-    local group = mgr.currentGroup or (mgr.groups and mgr.groups[1])
-    if not group or not group.items then return nil end
-
-    local cur = group.items[group.index]
+    if not mgr or not mgr.current or not mgr.current.items then return nil end
+    local cur = mgr.current.items[mgr.current.index]
     if cur and type(cur.onAnalogScroll) == "function" then return cur end
-    for _, w in ipairs(group.items) do
-        if type(w.onAnalogScroll) == "function" then
-            local vis = true
-            if type(w.isVisible) == "function" then
-                local ok, v = pcall(w.isVisible, w); if ok then vis = v end
-            end
-            if vis then return w end
-        end
-    end
     return nil
 end
 

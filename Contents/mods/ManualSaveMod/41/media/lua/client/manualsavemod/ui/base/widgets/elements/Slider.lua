@@ -126,6 +126,37 @@ function ManualSave.makeSlider(parent, opts)
         if opts.onRelease then opts.onRelease(value) end
     end
 
+    -- Right-stick proportional adjust: when the slider is focused, dx from the
+    -- analog stick changes the value smoothly. The step is scaled by the value
+    -- range so the same stick tilt feels consistent on sliders with different
+    -- min/max bounds. onChange fires every tick (live preview); onRelease
+    -- fires only when the stick returns to centre (or when Enter is pressed).
+    local _hasReleasedSinceTilt = true
+    pv.onAnalogScroll = function(_, dx, dy)
+        local dominant = math.abs(dx) >= math.abs(dy) and dx or dy
+        if dominant == 0 then
+            -- Stick returned to rest: commit the value once.
+            if not _hasReleasedSinceTilt then
+                _hasReleasedSinceTilt = true
+                if opts.onRelease then opts.onRelease(value) end
+            end
+            return false
+        end
+        _hasReleasedSinceTilt = false
+        -- AnalogStick passes pixel-scale deltas (~ a few px per tick at full
+        -- tilt). Convert to a value-space step proportional to the slider's
+        -- numeric range so wide-range sliders aren't sluggish.
+        local step    = (dominant / 20) * ((max - min) / 100)
+        local newVal  = math.max(min, math.min(max, value + step))
+        -- Sliders are integer-valued (px sizes, percentages, ...). Floor the
+        -- result so callers don't receive fractional pixels like 119.916...
+        local rounded = math.floor(newVal + 0.5)
+        if rounded == value then return true end
+        value = rounded
+        if opts.onChange then opts.onChange(value) end
+        return true
+    end
+
     -- Auto-register into the parent's nav group via walk-up.
     if opts.focusGroup ~= false then
         local g = opts.focusGroup

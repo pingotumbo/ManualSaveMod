@@ -113,15 +113,20 @@ function ManualSave.makeOptionCards(parent, opts)
         })
     end
 
-    -- Keyboard navigation: Left/Right move the cursor between cards.
-    -- Enter selects the card under the cursor (calls onChange).
-    -- Up/Down fall through so the focus group can hand off to a sibling widget.
+    -- Keyboard navigation: Left/Right move the cursor between cards while
+    -- there is still room. When the cursor is already at the edge and the
+    -- user presses Left/Right outward, we return false so the surrounding
+    -- FocusGroup can resolve the input (cross-group exit to the next column,
+    -- for instance). Without this the row would trap the focus forever.
+    -- Up/Down always fall through so vertical nav still escapes upward.
     row.onArrow = function(_, direction)
         if direction == "left" then
-            focusIdx = math.max(1, focusIdx - 1)
+            if focusIdx <= 1 then return false end
+            focusIdx = focusIdx - 1
             return true
         elseif direction == "right" then
-            focusIdx = math.min(n, focusIdx + 1)
+            if focusIdx >= n then return false end
+            focusIdx = focusIdx + 1
             return true
         end
         return false

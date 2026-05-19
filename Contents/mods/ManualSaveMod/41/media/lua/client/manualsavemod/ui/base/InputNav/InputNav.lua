@@ -101,7 +101,20 @@ function ManualSave.InputNav.installPanelNav(innerPanel, obj, opts)
         if button == Joypad.AButton then
             ManualSave.InputNav.handleKey(Keyboard.KEY_RETURN)
         elseif button == Joypad.BButton then
+            -- Joypad B is mapped to "cancel" by us. Some PZ contexts ALSO
+            -- forward joypad B as a synthetic OnKeyPressed(ESC) that would
+            -- then reach PauseMenuHook's _escWrapper and re-toggle the
+            -- vanilla pause menu. Stamp a guard so the wrapper can ignore
+            -- the next ESC for a short window.
+            if getTimestampMs then
+                local ok, t = pcall(getTimestampMs)
+                if ok then ManualSave.InputNav._suppressEscUntil = (tonumber(t) or 0) + 200 end
+            end
             ManualSave.InputNav.handleKey(Keyboard.KEY_ESCAPE)
+        -- L1/R1 floating rotator: shelved until we hit a use case with
+        -- multiple floating panels open at the same time, and until the
+        -- bumper events actually reach this handler (PZ may not forward L/R
+        -- bumpers to non-ISPanelJoypad receivers — to verify).
         end
     end
 
@@ -157,6 +170,51 @@ end
 
 function ManualSave.InputNav.activeManager()
     return activeStack[#activeStack]
+end
+
+-- Rotate the activeStack so a different floating-panel manager becomes the
+-- top. direction = +1 brings the NEXT floating manager to the top (wrap
+-- around), direction = -1 brings the PREVIOUS one. Non-floating screens
+-- (sub-screens of MainScreen, in-game screens without _isFloating) stay in
+-- place and are skipped during rotation. Called by L1/R1 bumpers.
+function ManualSave.InputNav.rotateFloatingFocus(direction)
+    -- Build the indices of floating managers in stack order.
+    local floats = {}
+    for i, m in ipairs(activeStack) do
+        if m._isFloating then table.insert(floats, i) end
+    end
+    if #floats < 2 then return end          -- nothing to rotate
+
+    -- The "current" floating is the highest-indexed floating in the stack.
+    -- If a non-floating screen sits on top of it that's fine — rotation only
+    -- reorders floats among themselves and bringToTop handles the visual order.
+    local topIdx = floats[#floats]
+    local n      = #floats
+    local curPos
+    for pos, si in ipairs(floats) do
+        if si == topIdx then curPos = pos; break end
+    end
+    if not curPos then return end
+
+    local newPos = ((curPos - 1 + direction) % n) + 1
+    local newTopStackIdx = floats[newPos]
+    if newTopStackIdx == #activeStack then return end  -- same one
+
+    -- Move the chosen floating manager to the top of the stack. Preserve the
+    -- order of non-floating screens in between.
+    local mgrToTop = activeStack[newTopStackIdx]
+    table.remove(activeStack, newTopStackIdx)
+    table.insert(activeStack, mgrToTop)
+
+    -- Bring the panel visually to the top too if we can find it.
+    if mgrToTop._dragTarget and mgrToTop._dragTarget.bringToTop then
+        pcall(function() mgrToTop._dragTarget:bringToTop() end)
+    end
+
+    ManualSave.InputNav.setKeyboardActive(true)
+    if ManualSave.InputNav.playNavSound then
+        pcall(ManualSave.InputNav.playNavSound)
+    end
 end
 
 -- ── Keyboard / mouse mode ─────────────────────────────────────────────────────

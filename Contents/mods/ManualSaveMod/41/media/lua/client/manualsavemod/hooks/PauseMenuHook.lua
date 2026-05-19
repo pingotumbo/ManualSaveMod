@@ -26,6 +26,21 @@ local function _escWrapper(key)
     local menuKey = getCore():getKey("Main Menu")
     local isEsc   = (menuKey ~= 0 and key == menuKey) or (menuKey == 0 and key == Keyboard.KEY_ESCAPE)
     if isEsc then
+        -- Joypad B sets a short-lived suppression timestamp (InputNav.lua) so
+        -- the synthetic ESC that some PZ paths emit alongside B doesn't fall
+        -- through here and re-toggle the vanilla pause menu after our cancel
+        -- already closed a sub-screen.
+        if ManualSave.InputNav and ManualSave.InputNav._suppressEscUntil and getTimestampMs then
+            local ok, t = pcall(getTimestampMs)
+            local nowT = ok and tonumber(t) or 0
+            print(string.format("[MSM-ESC] esc seen now=%s suppress=%s diff=%s",
+                tostring(nowT), tostring(ManualSave.InputNav._suppressEscUntil),
+                tostring(ManualSave.InputNav._suppressEscUntil - nowT)))
+            if ok and nowT > 0 and nowT <= ManualSave.InputNav._suppressEscUntil then
+                print("[MSM-ESC] suppressing")
+                return
+            end
+        end
         if ManualSave.LoadScreen and ManualSave.LoadScreen._screen then
             local st = ManualSave.LoadScreen._state
             if st and st.renamingSlot then

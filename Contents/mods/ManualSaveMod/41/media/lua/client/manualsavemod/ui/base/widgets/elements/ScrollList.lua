@@ -111,6 +111,14 @@ function ManualSave.makeScrollList(parent, opts)
 
         -- InputNav focus ring: drawn last so it sits on top of all content.
         -- Only shown while keyboard / gamepad navigation mode is active.
+        -- DEBUG once-per-state (rimuovere)
+        local now = (getTimestampMs and (function() local ok, t = pcall(getTimestampMs); return ok and (tonumber(t) or 0) or 0 end)()) or 0
+        if not self2._dbgLast or (now - (self2._dbgLast or 0)) > 500 then
+            print(string.format("[MSM-SL] ring focused=%s kbActive=%s",
+                tostring(self2.isFocused),
+                tostring(ManualSave.InputNav and ManualSave.InputNav.keyboardActive)))
+            self2._dbgLast = now
+        end
         if self2.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
             for i = 0, TH.FOCUS_BW - 1 do
                 self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
@@ -197,10 +205,21 @@ function ManualSave.makeScrollList(parent, opts)
     local obj = { panel = p }
 
     ---@param t table
-    ---@param keepScroll boolean? preserve current scroll position (default false)
+    ---@param keepScroll boolean? preserve current scroll position AND selected
+    ---                  index (clamped to the new item count) - default false
     function obj.setItems(t, keepScroll)
         items = t
-        if keepScroll then clampScroll() else scrollY = 0 end
+        if keepScroll then
+            clampScroll()
+            -- Clamp selected to the new bounds rather than blanking it. Used by
+            -- live-refresh flows (EditMods toggle, search filter) so the
+            -- keyboard / gamepad cursor stays on the same row instead of
+            -- snapping back to "no selection" after every toggle.
+            if selected > #items then selected = #items end
+            if selected < 0 then selected = 0 end
+            return
+        end
+        scrollY  = 0
         selected = 0
     end
 

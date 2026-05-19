@@ -8,8 +8,16 @@
 
 ManualSave = ManualSave or {}
 
-local INITIAL_DELAY_MS = 400
-local INTERVAL_MS      = 80
+-- Three-stage hold model:
+--   stage 1 (0 - INITIAL_DELAY_MS):      no repeat, only the initial press fires
+--   stage 2 (INITIAL_DELAY_MS - FAST_AT): repeat at INTERVAL_SLOW_MS cadence
+--   stage 3 (>= FAST_AT):                repeat at INTERVAL_FAST_MS cadence
+-- This gives a "click once, then accelerate" feel without a hard step into
+-- fast repeat: the user has time to release before runaway speeds kick in.
+local INITIAL_DELAY_MS = 200
+local FAST_AT          = 1000
+local INTERVAL_SLOW_MS = 100
+local INTERVAL_FAST_MS = 20
 
 -- Per-key state: when the key was first held + when we last fired it.
 -- A key disappears from this table on key release.
@@ -44,14 +52,17 @@ local function onKeyStart(key)
 end
 
 -- OnKeyKeepPressed fires every tick while the key is held. We re-fire the
--- navigation only after the initial delay and at the steady interval.
+-- navigation after the initial delay, at the SLOW interval until FAST_AT, then
+-- at the FAST interval (stage 3).
 local function onKeyKeep(key)
     if not isRepeatable(key) then return end
     local start = heldSince[key]
-    if not start then return end                          -- never saw the initial press
+    if not start then return end
     local t = nowMs()
-    if t - start < INITIAL_DELAY_MS then return end       -- still inside initial delay
-    if t - (lastFire[key] or 0) < INTERVAL_MS then return end
+    local held = t - start
+    if held < INITIAL_DELAY_MS then return end             -- stage 1: nothing yet
+    local interval = (held >= FAST_AT) and INTERVAL_FAST_MS or INTERVAL_SLOW_MS
+    if t - (lastFire[key] or 0) < interval then return end
     lastFire[key] = t
     if ManualSave.InputNav and ManualSave.InputNav.handleKey then
         ManualSave.InputNav.handleKey(key)

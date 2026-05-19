@@ -234,9 +234,16 @@ function ManualSave.openImportScreen(joypadData)
         rowH     = ITEM_ROW_H,
         items    = displayed,
         bg       = { r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
-        drawRow  = function(panel, item, rx, ry, rw, rh, _, _)
+        drawRow  = function(panel, item, rx, ry, rw, rh, isSelected, _)
             if item.checked then
                 panel:drawRect(rx, ry, rw, rh, 0.10, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
+            end
+            -- Keyboard / gamepad cursor highlight on the focused row. Matches
+            -- ModScrollList / SettingsNav patterns so the user sees which row
+            -- A / Enter will toggle.
+            if isSelected and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                panel:drawRect(rx, ry, rw, rh,
+                    TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
             end
             ManualSave.Draw.separator(panel, rx, ry + rh - 1, rw, 0.12)
 
@@ -274,6 +281,13 @@ function ManualSave.openImportScreen(joypadData)
             end
         end,
         onSelect = function(item, _)
+            item.checked = not item.checked
+            rebuild()
+        end,
+        -- Enter (or A on joypad): same toggle as mouse click. The scroll list
+        -- preserves the cursor index across setItems(t, true) inside rebuild()
+        -- so the user can toggle multiple rows in a row without losing focus.
+        onActivate = function(item, _)
             item.checked = not item.checked
             rebuild()
         end,

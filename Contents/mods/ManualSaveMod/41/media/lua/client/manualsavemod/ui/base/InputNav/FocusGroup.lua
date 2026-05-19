@@ -113,6 +113,9 @@ function FocusGroup:setIndex(i, silent)
     if i < 0 or i > #self.items then i = 0 end
     self.index = i
     local w = self.items[i]
+    -- DEBUG (rimuovere)
+    print(string.format("[MSM-FG] setIndex group=%s i=%s widget=%s silent=%s",
+        tostring(self.id), tostring(i), tostring(w), tostring(silent)))
     if w then
         w.isFocused = true
         if w.onFocus then pcall(w.onFocus, w) end
