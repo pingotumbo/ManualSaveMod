@@ -94,8 +94,10 @@ function ManualSave.makeDropdown(parent, opts)
             rowH  = rh,
             items = items,
             bg    = { r=TH.BG_R, g=TH.BG_G, b=TH.BG_B },
-            drawRow = function(panel, item, x, y, w, h, _, _)
-                local isSel = item.id == selId
+            -- The row "selected" flag (7th arg) reflects ScrollList's internal
+            -- cursor, updated live by Up/Down. We use it instead of selId so
+            -- the highlight follows the cursor immediately as the user nav.
+            drawRow = function(panel, item, x, y, w, h, isSel, _)
                 if isSel then
                     panel:drawRect(x, y, w, h, 0.15, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
                 end
@@ -106,6 +108,13 @@ function ManualSave.makeDropdown(parent, opts)
                 panel:drawText(item.label, x + TH.PAD, y + math.floor((h - fh) / 2),
                     tr, tg, tb, 1, UIFont.Small)
                 ManualSave.Draw.separator(panel, x, y + h - 1, w, 0.12)
+            end,
+            -- onNavigate fires on every Up/Down without committing. We keep
+            -- selId in sync so the trigger label below the popup also updates
+            -- live (and onChange callers see the value before Enter / click).
+            onNavigate = function(item, _)
+                selId = item.id
+                if opts.onChange then opts.onChange(selId, item.label) end
             end,
             onSelect = function(item, _)
                 selId = item.id

@@ -98,6 +98,21 @@ function ManualSave.makeFloatingPanel(opts)
         if ISPanel.onMouseUp then ISPanel.onMouseUp(self2, mx, my) end
     end
 
+    -- Analog-stick drag: AnalogStick calls this every render frame when the
+    -- right stick is tilted and no focused widget exposes onAnalogScroll.
+    -- dx/dy are pre-scaled pixel deltas; we clamp to the visible screen so the
+    -- panel can't be dragged completely off-screen.
+    p.onAnalogDrag = function(self2, dx, dy)
+        if not dx or not dy or (dx == 0 and dy == 0) then return false end
+        local sw = getCore():getScreenWidth()
+        local sh = getCore():getScreenHeight()
+        local nx = math.max(-self2.width  + 60, math.min(sw - 60, self2:getX() + dx))
+        local ny = math.max(0,                  math.min(sh - 30, self2:getY() + dy))
+        self2:setX(nx)
+        self2:setY(ny)
+        return true
+    end
+
     local callbacks = {}
     local closing   = false
 
@@ -112,18 +127,47 @@ function ManualSave.makeFloatingPanel(opts)
         table.insert(callbacks, fn)
     end
 
+    -- Joypad focus capture state. When the panel is opened with a joypadData,
+    -- we record the previous focus + inMainMenu flag so we can hand them back
+    -- when the panel closes. Without this restore, even after the panel goes
+    -- away the joypadData would still point at the closed inner panel.
+    local _savedJoypadData     = nil
+    local _savedJoypadOldFocus = nil
+    local _savedInMainMenuFlag = nil
+
     local function doClose()
         if closing then return end
         closing = true
         p:setVisible(false)
         p:removeFromUIManager()
+        if _savedJoypadData then
+            if _savedInMainMenuFlag ~= nil then
+                _savedJoypadData.inMainMenu = _savedInMainMenuFlag
+            end
+            _savedJoypadData.focus = _savedJoypadOldFocus
+            if updateJoypadFocus then updateJoypadFocus(_savedJoypadData) end
+            _savedJoypadData     = nil
+            _savedJoypadOldFocus = nil
+            _savedInMainMenuFlag = nil
+        end
         for _, fn in ipairs(callbacks) do pcall(fn) end
     end
 
-    function obj.open()
+    function obj.open(joypadData)
         p:addToUIManager()
         p:setVisible(true)
         p:bringToTop()
+        -- Joypad focus transfer (vanilla ISPanelJoypad.setVisible pattern).
+        -- Also clear inMainMenu while we own the focus, otherwise MainScreen
+        -- and JoypadState.reactivateJoypad will re-steal it every frame.
+        if joypadData then
+            _savedJoypadData     = joypadData
+            _savedJoypadOldFocus = joypadData.focus
+            _savedInMainMenuFlag = joypadData.inMainMenu
+            joypadData.inMainMenu = false
+            joypadData.focus      = p
+            if updateJoypadFocus then updateJoypadFocus(joypadData) end
+        end
     end
 
     function obj.close()
@@ -202,6 +246,9 @@ function ManualSave.makeFloatingPanel(opts)
         -- returning and d.open() being called). _inputNavRegisterAtEnd drains its
         -- queue inside the open() wrapper installed by installPanelNav.
         if p._inputNavRegisterAtEnd then p._inputNavRegisterAtEnd(xBtn) end
+        -- Tell AnalogStick that the right stick should drag this panel when
+        -- no focused widget consumes the scroll input.
+        if p._inputNav then p._inputNav._dragTarget = p end
     end
     -- Expose the X button so custom-nav callers can register it themselves.
     obj.xButton = xBtn

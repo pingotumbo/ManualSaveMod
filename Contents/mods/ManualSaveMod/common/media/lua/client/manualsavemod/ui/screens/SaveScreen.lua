@@ -15,7 +15,11 @@ local _screen = nil  -- open instance; nil when closed
 function ManualSave._saveScreenOpen() return _screen ~= nil end
 
 -- Opens the save screen. No-op if already open.
-function ManualSave.openSaveScreen()
+-- joypadData is forwarded to the floating panel's open() so the right joypad
+-- focus is transferred (caller is responsible for fetching it via
+-- JoypadState.getMainMenuJoypad() BEFORE closing the pause menu, since
+-- getMainMenuJoypad returns nil once the pause menu is closed).
+function ManualSave.openSaveScreen(joypadData)
     if _screen then return end
 
     local TH = ManualSave.Theme
@@ -179,7 +183,7 @@ function ManualSave.openSaveScreen()
         setShowPausedMessage(false)
     end
 
-    d.open()
+    d.open(joypadData)
 end
 
 -- Closes the save screen. Pass keepPaused=true to leave the game paused

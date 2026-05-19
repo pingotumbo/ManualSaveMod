@@ -114,6 +114,35 @@ function ManualSave.makeScrollPanel(parent, opts)
     -- Containers don't consume arrow keys; focus passes through to children.
     p.onArrow = function() return false end
 
+    -- Group-active focus ring: draws a yellow border around the container
+    -- whenever its associated focus group (set by the caller as
+    -- self._inputNavGroup) is the currently-active group of the topmost
+    -- FocusManager. This makes the scroll panel feel like a single navigable
+    -- region, matching how a vanilla scroll list visually "owns" its area
+    -- while focus is inside it.
+    --
+    -- We only draw while keyboardActive == true so mouse-only users don't get
+    -- the ring (keyboard / gamepad nav flips that flag on; mouse activity
+    -- turns it back off).
+    local origRender = p.render
+    p.render = function(self2)
+        if origRender then origRender(self2) else ISPanel.render(self2) end
+        local IN = ManualSave.InputNav
+        if not IN or not IN.keyboardActive then return end
+        local g = self2._inputNavGroup
+        if not g then return end
+        local mgr = IN.activeManager and IN.activeManager()
+        if not mgr or mgr.current ~= g then return end
+        local TH2 = ManualSave.Theme
+        local bw  = TH2.FOCUS_BW or 2
+        local rR  = TH2.FOCUS_R  or 1.0
+        local rG  = TH2.FOCUS_G  or 0.85
+        local rB  = TH2.FOCUS_B  or 0.20
+        for i = 0, bw - 1 do
+            self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1, rR, rG, rB)
+        end
+    end
+
     -- Scroll the viewport so `child` is fully visible. `child` must be a
     -- direct or indirect descendant whose getY()/getHeight() are valid in this
     -- panel's coordinate space (PZ's setYScroll is in the panel's own space).

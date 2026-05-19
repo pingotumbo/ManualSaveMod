@@ -5,7 +5,7 @@
 ManualSave              = ManualSave or {}
 ManualSave.EditModsScreen = ManualSave.EditModsScreen or {}
 
-local function drawModRow(panel, item, x, y, w, h, _, _)
+local function drawModRow(panel, item, x, y, w, h, isSelected, _)
     local TH = ManualSave.Theme
     local FHS = TH.FONT_HGT_SMALL
     local cr, cg, cb, ca
@@ -15,6 +15,13 @@ local function drawModRow(panel, item, x, y, w, h, _, _)
         cr, cg, cb, ca = TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 1.0
     else
         cr, cg, cb, ca = TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 0.55
+    end
+
+    -- Selected-row highlight (keyboard / gamepad cursor). Only draws when
+    -- nav mode is active so mouse users don't see a permanent highlight.
+    if isSelected and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+        panel:drawRect(x, y, w, h,
+            TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
     end
 
     ManualSave.Draw.separator(panel, x, y + h - 1, w, 0.18)

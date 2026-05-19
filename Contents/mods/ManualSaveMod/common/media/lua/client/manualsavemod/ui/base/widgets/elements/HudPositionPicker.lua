@@ -92,10 +92,12 @@ function ManualSave.makeHudPositionPicker(parent, opts)
         bg={ r=0, g=0, b=0, a=0 }, border=false,
     })
 
-    -- Schematic (click-to-place + drag, keyboard arrows nudge the indicator)
+    -- Schematic (click-to-place + drag, keyboard arrows nudge the indicator).
+    -- Background is solid near-black to mimic a real PZ screen at night, so the
+    -- player can preview HUD placement against the in-game look.
     local schematic = ManualSave.makePanel(combo, {
         x=0, y=0, w=schW, h=SCH_H,
-        bg={ r=TH.BG_R * 0.55, g=TH.BG_G * 0.50, b=TH.BG_B * 0.45, a=1 }, border=false,
+        bg={ r=0.04, g=0.04, b=0.04, a=1 }, border=false,
         prerender = function(pv)
             local TH2 = ManualSave.Theme
 
@@ -124,15 +126,39 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                     math.floor((pv.height - TH2.FONT_HGT_SMALL) / 2),
                     TH2.DIM_R, TH2.DIM_G, TH2.DIM_B, 0.55, UIFont.Small)
             else
-                -- Minimap: moodle strip, player dot, hotbar
-                pv:drawRect(pv.width - 9, 3, 6, 28, 0.12, 1, 1, 1)
-                pv:drawRect(math.floor(pv.width/2)-2, math.floor(pv.height/2)-2, 4, 4, 0.20, 1, 1, 1)
-                local hbW = math.floor(pv.width * 0.38)
-                local hbX = math.floor((pv.width - hbW) / 2)
-                pv:drawRectBorder(hbX, pv.height - 7, hbW, 4, 0.22, TH2.DIM_R, TH2.DIM_G, TH2.DIM_B)
+                -- Schematic HUD layout, mirroring vanilla PZ at a glance:
+                --   - Left column: 4 small moodle squares stacked.
+                --   - Right column: 3 small squares (clock / compass / slot).
+                --   - Bottom centre: 7-slot hotbar.
+                -- All drawn dim grey so the orange indicator + snap guides
+                -- stand out against them.
+                local dotR, dotG, dotB, dotA = 0.55, 0.55, 0.55, 0.55
+                local sq, gap = 6, 4
 
-                -- Snap guides, tinted accent so they match the indicator pill
-                -- and the rest of the mod's accent palette.
+                -- Left moodle column (4 squares).
+                local lcX = 4
+                for i = 0, 3 do
+                    pv:drawRectBorder(lcX, 6 + i * (sq + gap), sq, sq, dotA, dotR, dotG, dotB)
+                end
+                -- Right column (3 squares).
+                local rcX = pv.width - 4 - sq
+                for i = 0, 2 do
+                    pv:drawRectBorder(rcX, 6 + i * (sq + gap), sq, sq, dotA, dotR, dotG, dotB)
+                end
+                -- Bottom hotbar (7 slots centred).
+                local hbCount = 7
+                local hbSq    = 7
+                local hbGap   = 2
+                local hbW     = hbCount * hbSq + (hbCount - 1) * hbGap
+                local hbX     = math.floor((pv.width - hbW) / 2)
+                local hbY     = pv.height - hbSq - 4
+                for i = 0, hbCount - 1 do
+                    pv:drawRectBorder(hbX + i * (hbSq + hbGap), hbY, hbSq, hbSq,
+                        dotA, dotR, dotG, dotB)
+                end
+
+                -- Snap guides, tinted accent so they match the rest of the
+                -- mod's accent palette.
                 if snapVX then
                     pv:drawRect(math.floor(snapVX * pv.width), 0, 1, pv.height, 0.5,
                         TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
@@ -142,12 +168,23 @@ function ManualSave.makeHudPositionPicker(parent, opts)
                         TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
                 end
 
-                -- Indicator pill
+                -- Static reference: small hollow white circle anchored at the
+                -- centre of the schematic (not the indicator). Marks where the
+                -- middle of the simulated screen is, independent of posX/posY.
+                if ManualSave.Draw and ManualSave.Draw.pixelCircle then
+                    ManualSave.Draw.pixelCircle(pv,
+                        math.floor(pv.width / 2),
+                        math.floor(pv.height / 2),
+                        3, 0.55, 1, 1, 1)
+                end
+
+                -- Indicator pill (accent orange) — the only element that moves.
+                -- Its position reflects posX/posY (0..1 normalised).
                 local IND_W, IND_H = 34, 7
-                local indX = math.max(0, math.min(pv.width  - IND_W,
-                    math.floor(posX * pv.width)  - math.floor(IND_W / 2)))
-                local indY = math.max(0, math.min(pv.height - IND_H,
-                    math.floor(posY * pv.height) - math.floor(IND_H / 2)))
+                local cx2  = math.floor(posX * pv.width)
+                local cy2  = math.floor(posY * pv.height)
+                local indX = math.max(0, math.min(pv.width  - IND_W, cx2 - math.floor(IND_W / 2)))
+                local indY = math.max(0, math.min(pv.height - IND_H, cy2 - math.floor(IND_H / 2)))
                 pv:drawRect(indX, indY, IND_W, IND_H, 0.9,
                     TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
             end

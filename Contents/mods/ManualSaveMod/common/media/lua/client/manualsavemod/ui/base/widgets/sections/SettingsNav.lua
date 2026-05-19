@@ -40,10 +40,18 @@ function ManualSave.makeSettingsNav(parent, opts)
         x=0, y=opts.y, w=navW, h=opts.h,
         rowH=rowH, items=items,
         bg = { r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
-        drawRow = function(panel, item, x, y, w, h)
+        drawRow = function(panel, item, x, y, w, h, isCursor, _)
             local isSel = (item.id == ss._section)
             if isSel then
                 ManualSave.Draw.rowHighlight(panel, y, w, h, 16, 0.22)
+            end
+            -- Keyboard / gamepad cursor highlight on the focused row (matches
+            -- the live internal cursor of the scroll list, not the active
+            -- section). Drawn only when nav mode is active so mouse users
+            -- don't see a permanent highlight.
+            if isCursor and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                panel:drawRect(x, y, w, h,
+                    TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
             end
             panel:drawText(item.label, x + 18, y + math.floor((h - TH.FONT_HGT_SMALL) / 2),
                 isSel and TH.TEXT_R or TH.MUTED_R,
@@ -57,6 +65,18 @@ function ManualSave.makeSettingsNav(parent, opts)
         onActivate = function(item) applySection(item.id) end,
         focusGroup = opts.focusGroup,
     })
+
+    -- Pre-position the list cursor on the currently active section so the
+    -- first Down press moves to the next section (not "starts" from 0). This
+    -- avoids the wasted-first-keypress feel you'd get with the default
+    -- `selected = 0` and matches how a freshly opened native scroll list
+    -- behaves when something is already chosen.
+    for i, it in ipairs(items) do
+        if it.id == ss._section then
+            if navList.setSelected then navList.setSelected(i) end
+            break
+        end
+    end
 
     -- Right-side divider line (visual continuity with the original tab nav).
     ManualSave.makePanel(parent, {

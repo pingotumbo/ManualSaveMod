@@ -16,11 +16,16 @@ local SECTIONS = {
     { id="advanced", labelKey="UI_MSM_Settings_NavAdvanced" },
 }
 
-function ManualSave.openSettingsScreen()
+function ManualSave.openSettingsScreen(joypadData)
     local ss = ManualSave.SettingsScreen
     if ss._screen then
         ss._screen.panel:bringToTop()
         return
+    end
+    -- If no joypadData was provided (e.g. opened by mouse click), recover the
+    -- active joypad ourselves so the focus transfer still happens on gamepad.
+    if not joypadData and JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
     end
 
     local TH = ManualSave.Theme
@@ -65,17 +70,27 @@ function ManualSave.openSettingsScreen()
     d.panel._inputNav      = mgr
     d.panel._inputNavGroup = contentGroup   -- safe default for footer-area widgets
 
-    -- Push the manager when the floating panel opens; pop on close.
+    -- Push the manager when the floating panel opens; pop on close. Forward
+    -- all args (joypadData) to the underlying open so floating joypad-focus
+    -- transfer can fire when SettingsScreen is opened from a gamepad.
     local origOpen = d.open
-    d.open = function()
+    d.open = function(...)
         IN.pushActive(mgr)
-        if origOpen then origOpen() end
+        if origOpen then origOpen(...) end
     end
     d.onClose(function() IN.popActive(mgr) end)
 
-    -- The floating window's X button (no overlay close): register at the end
-    -- of the content group's tab order.
-    if d.xButton then contentGroup:add(d.xButton) end
+    -- The X button lives in its own focus group so it's reachable from both
+    -- nav and content via Up (visual: top-right of the window), without ever
+    -- being part of either column's vertical tab order.
+    local headerGroup = IN.makeGroup({ id="header", layout="horizontal", wrap=true })
+    mgr:addGroup(headerGroup)
+    mgr:linkGroups({
+        { from = navGroup,     on = "up", to = headerGroup },
+        { from = contentGroup, on = "up", to = headerGroup },
+        { from = headerGroup,  on = "down", to = contentGroup },
+    })
+    if d.xButton then headerGroup:add(d.xButton) end
 
     -- makeSettingsNav builds a ScrollList registered as a single item in
     -- navGroup (via opts.focusGroup). Up/Down inside the list cycles
@@ -83,7 +98,9 @@ function ManualSave.openSettingsScreen()
     ManualSave.makeSettingsNav(d.panel, {
         y=cy, h=ch, sections=SECTIONS, navW=NAV_W,
         focusGroup      = navGroup,
-        onSectionChange = function() contentGroup:focusFirst() end,
+        -- Silent focusFirst so the section switch produces only the nav sound
+        -- from the scroll list itself (one Down = one tick, not two).
+        onSectionChange = function() contentGroup:focusFirst(true) end,
     })
 
     local sx = NAV_W + 1
@@ -115,7 +132,7 @@ function ManualSave.openSettingsScreen()
         r=TH.DIM_R, g=TH.DIM_G, b=TH.DIM_B, a=0.8,
     })
 
-    d.open()
+    d.open(joypadData)
 end
 
 function ManualSave.closeSettingsScreen()

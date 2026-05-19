@@ -55,12 +55,28 @@ Events.OnKeyPressed.Add(_escWrapper)
 -- close the pause menu before opening it (vanilla-incompatible interim state).
 local function onSaveGameClick(_, _, _)
     getSoundManager():playUISound("UIActivateMainMenuItem")
+    -- Capture joypadData BEFORE ToggleEscapeMenu, since closing the pause menu
+    -- nulls out getMainMenuJoypad(). SaveScreen's floating panel needs it to
+    -- transfer joypad focus to itself.
+    local joypadData = nil
+    if JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
+    end
     ToggleEscapeMenu(getCore():getKey("Main Menu"))
-    ManualSave.openSaveScreen()
+    ManualSave.openSaveScreen(joypadData)
 end
 
-local function onLoadGameClick(_, _, _, joypadData)
+-- Vanilla pattern (same as MainScreen entries): the A-button dispatcher
+-- doesn't propagate joypadData. The handler recovers it via
+-- JoypadState.getMainMenuJoypad() so that LoadScreen.open() can transfer the
+-- joypad focus to the sub-screen. Without this, the pad would continue
+-- driving the pause menu underneath.
+local function onLoadGameClick(_, _, _)
     getSoundManager():playUISound("UIActivateMainMenuItem")
+    local joypadData = nil
+    if JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
+    end
     ManualSave.openLoadScreen(false, joypadData)
 end
 
@@ -133,6 +149,83 @@ Events.OnGameStart.Add(function()
 
     print("[ManualSaveMod] Pause menu: SAVE GAME + LOAD GAME injected.")
 end)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Joypad navigation integration (mirror of MainMenuHook).
+--
+-- The in-game pause menu is the same MainScreen vanilla with `inGame=true`, so
+-- it uses the same `onGainJoypadFocus` to (re)build joypadButtonsY from a
+-- hardcoded list and the same `onMenuItemMouseDownMainMenu` to dispatch on
+-- A-press. We wrap both to make SAVE GAME / LOAD GAME selectable by D-pad and
+-- activatable by A.
+--
+-- Important: the wrap is shared with MainMenuHook (it patches the same
+-- functions). _pauseMenuJoypadInstalled guards a double install if this file
+-- ever runs through OnGameStart twice in the same session.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+local _pauseMenuJoypadInstalled = false
+
+local function installPauseMenuJoypad()
+    if _pauseMenuJoypadInstalled then return end
+    if not MainScreen or not MainScreen.onGainJoypadFocus then return end
+    if not MainScreen.onMenuItemMouseDownMainMenu then return end
+    _pauseMenuJoypadInstalled = true
+
+    local origGainFocus = MainScreen.onGainJoypadFocus
+    function MainScreen:onGainJoypadFocus(joypadData)
+        origGainFocus(self, joypadData)
+        local rows = self.joypadButtonsY
+        if not rows then return end
+        -- Collect our two labels in visual order (SAVE then LOAD).
+        local toInject = {}
+        if self.saveGameOption and self.saveGameOption:isVisible() then
+            table.insert(toInject, self.saveGameOption)
+        end
+        if self.loadGameOption and self.loadGameOption:isVisible() then
+            table.insert(toInject, self.loadGameOption)
+        end
+        if #toInject == 0 then return end
+        -- Skip any already present (defensive: re-entry).
+        local present = {}
+        for _, row in ipairs(rows) do
+            if row and row[1] then present[row[1]] = true end
+        end
+        -- Locate insertion point: just above EXIT, fall back to append.
+        local insertAt = #rows + 1
+        for i, row in ipairs(rows) do
+            local el = row and row[1]
+            if el and el.internal == "EXIT" then insertAt = i; break end
+        end
+        for _, opt in ipairs(toInject) do
+            if not present[opt] then
+                table.insert(rows, insertAt, { opt })
+                insertAt = insertAt + 1
+            end
+        end
+    end
+
+    local origMouseDown = MainScreen.onMenuItemMouseDownMainMenu
+    function MainScreen.onMenuItemMouseDownMainMenu(item, x, y)
+        if item then
+            if item.internal == "MANUALSAVE_SAVE" then
+                -- Vanilla dispatch path: getMainMenuJoypad() inside the click
+                -- handler retrieves the joypadData independently — no need to
+                -- propagate it as an argument.
+                onSaveGameClick(item, x, y)
+                return
+            elseif item.internal == "MANUALSAVE_LOAD" then
+                onLoadGameClick(item, x, y)
+                return
+            end
+        end
+        return origMouseDown(item, x, y)
+    end
+
+    print("[ManualSaveMod] Pause menu: joypad integration installed.")
+end
+
+Events.OnGameStart.Add(installPauseMenuJoypad)
 
 -- Patch vanilla CreditsScreen.onResolutionChange: self.richText is nil when
 -- the Credits screen was never opened (PZ B42 bug — missing nil guard).

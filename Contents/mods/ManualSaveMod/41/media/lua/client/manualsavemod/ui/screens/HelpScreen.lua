@@ -809,7 +809,7 @@ end
 
 -- ── UI builder ─────────────────────────────────────────────────────────────────
 
-function ManualSave.openHelpScreen(section)
+function ManualSave.openHelpScreen(section, joypadData)
     if section then _section = section end
     if _screen then
         if section then
@@ -818,6 +818,9 @@ function ManualSave.openHelpScreen(section)
         end
         _screen.panel:bringToTop()
         return
+    end
+    if not joypadData and JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
     end
 
     local d  = ManualSave.makeFloatingPanel({
@@ -852,7 +855,7 @@ function ManualSave.openHelpScreen(section)
         getLines = activeLines,
     })
 
-    d.open()
+    d.open(joypadData)
 end
 
 function ManualSave.closeHelpScreen()

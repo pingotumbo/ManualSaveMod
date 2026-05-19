@@ -81,9 +81,12 @@ end
 
 -- ── Screen ────────────────────────────────────────────────────────────────────
 
-function ManualSave.openImportScreen()
+function ManualSave.openImportScreen(joypadData)
     if _screen then _screen.panel:bringToTop(); return end
     if _importing then return end
+    if not joypadData and JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
+    end
 
     local TH   = ManualSave.Theme
     local PAD  = TH.PAD
@@ -408,7 +411,7 @@ function ManualSave.openImportScreen()
         rebuild()
     end, 3600)
 
-    d.open()
+    d.open(joypadData)
 end
 
 function ManualSave.closeImportScreen()

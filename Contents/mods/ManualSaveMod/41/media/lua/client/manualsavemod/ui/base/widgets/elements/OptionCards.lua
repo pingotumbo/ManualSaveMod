@@ -44,20 +44,25 @@ function ManualSave.makeOptionCards(parent, opts)
     local row = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y, w=opts.w, h=cardH,
         bg={r=0,g=0,b=0,a=0}, border=false,
-        prerender = function(pv)
-            if not pv.isFocused or not (ManualSave.InputNav and ManualSave.InputNav.keyboardActive) then
-                return
-            end
-            -- Draw focus ring around the card the keyboard cursor is on.
-            local idx = math.max(1, math.min(n, focusIdx))
-            local cx  = (idx - 1) * (cardW + gap)
-            local TH2 = ManualSave.Theme
-            for i = 0, TH2.FOCUS_BW - 1 do
-                pv:drawRectBorder(cx + i, i, cardW - i*2, cardH - i*2, 1,
-                    TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
-            end
-        end,
     })
+
+    -- Focus ring drawn in render (after children) so the cards don't cover it.
+    -- prerender fires BEFORE child render, so a ring drawn there would be hidden
+    -- by each card's own prerender filling its entire area.
+    local origRender = row.render
+    row.render = function(pv)
+        if origRender then origRender(pv) else ISPanel.render(pv) end
+        if not pv.isFocused or not (ManualSave.InputNav and ManualSave.InputNav.keyboardActive) then
+            return
+        end
+        local idx = math.max(1, math.min(n, focusIdx))
+        local cx  = (idx - 1) * (cardW + gap)
+        local TH2 = ManualSave.Theme
+        for i = 0, TH2.FOCUS_BW - 1 do
+            pv:drawRectBorder(cx + i, i, cardW - i*2, cardH - i*2, 1,
+                TH2.FOCUS_R, TH2.FOCUS_G, TH2.FOCUS_B)
+        end
+    end
 
     for i, cd in ipairs(cards) do
         local cardX = (i - 1) * (cardW + gap)

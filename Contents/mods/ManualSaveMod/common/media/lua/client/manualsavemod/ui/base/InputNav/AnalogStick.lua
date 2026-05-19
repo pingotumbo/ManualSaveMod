@@ -71,9 +71,6 @@ local function onTick()
     if ry > -DEADZONE and ry < DEADZONE then ry = 0 end
     if rx == 0 and ry == 0 then return end
 
-    local target = findScrollTarget()
-    if not target then return end
-
     -- Same frame-rate-normalised step vanilla ISRichTextPanel uses.
     local dt = 33.3
     if UIManager and UIManager.getMillisSinceLastRender then
@@ -83,7 +80,22 @@ local function onTick()
     local scale = dt / 33.3
     local dx = rx * PX_PER_FRAME * scale
     local dy = ry * PX_PER_FRAME * scale
-    pcall(target.onAnalogScroll, target, dx, dy)
+
+    -- Primary: scroll a widget that exposes onAnalogScroll. Fallback: drag the
+    -- active floating panel (set by Floating.lua as `mgr._dragTarget`). This
+    -- way the right stick scrolls a list/text when focused there, and drags
+    -- the floating window when no scroll target is available.
+    local target = findScrollTarget()
+    if target then
+        pcall(target.onAnalogScroll, target, dx, dy)
+        return
+    end
+    local IN  = ManualSave.InputNav
+    local mgr = IN and IN.activeManager and IN.activeManager()
+    local dragTarget = mgr and mgr._dragTarget
+    if dragTarget and type(dragTarget.onAnalogDrag) == "function" then
+        pcall(dragTarget.onAnalogDrag, dragTarget, dx, dy)
+    end
 end
 
 -- OnRenderTick fires every drawn frame regardless of pause state — same hook
