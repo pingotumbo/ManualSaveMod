@@ -7,7 +7,17 @@
 Thumbs.db
 .DS_Store
 
-# Dev notes
+# IDE / editor
+.claude/
+.vscode/
+
+# Dev notes / personal scripts (not shipped with the mod)
 DEVLOG.txt
 publish_to_workshop.ps1
 ManualSave_Sync*.cmd
+
+# Steam Workshop metadata (only useful when uploading from the local PC)
+workshop.txt
+
+# Per-machine path (not part of the mod)
+Contents/mods/ManualSaveMod/ManualSave_UserDir.txt
