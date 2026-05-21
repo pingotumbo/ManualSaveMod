@@ -96,6 +96,24 @@ function ManualSave.MetaCache.write(gmode, world, slot, data)
     if d.SEED     then w:write("SEED="     .. d.SEED     .. "\r\n") end
     if d.SIZE     then w:write("SIZE="     .. d.SIZE     .. "\r\n") end
     if d.SOURCE   then w:write("SOURCE="   .. d.SOURCE   .. "\r\n") end
+    -- Rich location / weather fields collected by collectLiveData. All optional;
+    -- older meta files without them still parse fine because read() just picks
+    -- up whatever k=v lines are present.
+    if d.REGION        then w:write("REGION="        .. d.REGION        .. "\r\n") end
+    if d.COORDS        then w:write("COORDS="        .. d.COORDS        .. "\r\n") end
+    if d.INDOOR        then w:write("INDOOR="        .. d.INDOOR        .. "\r\n") end
+    if d.HOUR_INGAME   then w:write("HOUR_INGAME="   .. d.HOUR_INGAME   .. "\r\n") end
+    if d.MINUTE_INGAME then w:write("MINUTE_INGAME=" .. d.MINUTE_INGAME .. "\r\n") end
+    if d.MONTH         then w:write("MONTH="         .. d.MONTH         .. "\r\n") end
+    if d.DAY_OF_MONTH  then w:write("DAY_OF_MONTH="  .. d.DAY_OF_MONTH  .. "\r\n") end
+    if d.YEAR          then w:write("YEAR="          .. d.YEAR          .. "\r\n") end
+    if d.TEMPERATURE   then w:write("TEMPERATURE="   .. d.TEMPERATURE   .. "\r\n") end
+    if d.PRECIPITATION then w:write("PRECIPITATION=" .. d.PRECIPITATION .. "\r\n") end
+    if d.FOG           then w:write("FOG="           .. d.FOG           .. "\r\n") end
+    if d.CLOUDS        then w:write("CLOUDS="        .. d.CLOUDS        .. "\r\n") end
+    if d.WIND          then w:write("WIND="          .. d.WIND          .. "\r\n") end
+    if d.RAINING       then w:write("RAINING="       .. d.RAINING       .. "\r\n") end
+    if d.SNOWING       then w:write("SNOWING="       .. d.SNOWING       .. "\r\n") end
     w:close()
     return true
 end
@@ -198,6 +216,57 @@ function ManualSave.MetaCache.collectLiveData(saveType)
             if     w.getSeed    then d.SEED = tostring(w:getSeed())
             elseif w.getMapSeed then d.SEED = tostring(w:getMapSeed()) end
         end
+    end)
+
+    -- Player position + region. Coordinates land in COORDS as comma-separated
+    -- "x,y,z" so we can split them again later without parsing nested fields.
+    -- REGION is the human-readable name from getCurrentRegion() when the API
+    -- is present; otherwise we leave it unset (consumers fall back to MAP).
+    pcall(function()
+        local p = getPlayer()
+        if not p then return end
+        local x = tonumber(p:getX()) or 0
+        local y = tonumber(p:getY()) or 0
+        local z = tonumber(p:getZ()) or 0
+        d.COORDS = string.format("%d,%d,%d", math.floor(x), math.floor(y), math.floor(z))
+        if p.getCurrentRegion then
+            local r = p:getCurrentRegion()
+            if r and r ~= "" then d.REGION = tostring(r) end
+        end
+        if p.getSquare then
+            local sq = p:getSquare()
+            if sq and sq.getBuilding then
+                d.INDOOR = (sq:getBuilding() ~= nil) and "1" or "0"
+            end
+        end
+    end)
+
+    -- In-game date and time. PZ exposes hours / minutes / day / month / year
+    -- on GameTime. We store them as separate plain integers so formatting
+    -- stays a UI concern (12h vs 24h, locale, ...).
+    pcall(function()
+        local gt = getGameTime()
+        if not gt then return end
+        if gt.getHour          then d.HOUR_INGAME    = tostring(gt:getHour())          end
+        if gt.getMinutes       then d.MINUTE_INGAME  = tostring(gt:getMinutes())       end
+        if gt.getMonth         then d.MONTH          = tostring(gt:getMonth())         end
+        if gt.getDay           then d.DAY_OF_MONTH   = tostring(gt:getDay())           end
+        if gt.getYear          then d.YEAR           = tostring(gt:getYear())          end
+    end)
+
+    -- Weather snapshot. PZ ClimateManager exposes a handful of "intensity"
+    -- accessors plus a temperature; we read whichever are defined and let the
+    -- UI later collapse them into a single label (Clear/Rain/Fog/...).
+    pcall(function()
+        local cm = getClimateManager()
+        if not cm then return end
+        if cm.getTemperature        then d.TEMPERATURE     = string.format("%.1f", cm:getTemperature())        end
+        if cm.getPrecipitationIntensity then d.PRECIPITATION = string.format("%.2f", cm:getPrecipitationIntensity()) end
+        if cm.getFogIntensity       then d.FOG             = string.format("%.2f", cm:getFogIntensity())       end
+        if cm.getCloudIntensity     then d.CLOUDS          = string.format("%.2f", cm:getCloudIntensity())     end
+        if cm.getWindIntensity      then d.WIND            = string.format("%.2f", cm:getWindIntensity())      end
+        if cm.isRaining and cm:isRaining() then d.RAINING  = "1" end
+        if cm.isSnowing and cm:isSnowing() then d.SNOWING  = "1" end
     end)
 
     return d
