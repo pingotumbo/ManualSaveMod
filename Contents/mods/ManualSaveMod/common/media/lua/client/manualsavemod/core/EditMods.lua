@@ -13,6 +13,16 @@ local function firstAlpha(str)
     return "?"
 end
 
+-- Heuristic: a mod is treated as a map mod if it declares the "Map" tag in its
+-- mod.info (the TIS-recommended convention). Removing such a mod from a save
+-- makes its map areas unloadable, so the UI protects them by default.
+local function isMapMod(tags)
+    for _, t in ipairs(tags or {}) do
+        if t:lower() == "map" then return true end
+    end
+    return false
+end
+
 -- Sort key: strips leading [tag] groups so "[B42] Home Inventory" sorts as "home inventory".
 function ManualSave.EditMods.sortKey(name)
     local s = name:lower()
@@ -142,6 +152,7 @@ function ManualSave.EditMods.buildModList(save)
             checked   = inSave,
             status    = "ok",
             note      = "",
+            isMap     = isMapMod(dat.tags),
         })
     end
 
@@ -158,6 +169,7 @@ function ManualSave.EditMods.buildModList(save)
                 checked   = true,
                 status    = "missing",
                 note      = getText("UI_MSM_EditMods_NotInstalled"),
+                isMap     = false,
             })
         end
     end

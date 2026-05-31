@@ -30,10 +30,44 @@ ManualSave = ManualSave or {}
 --   update       fun(btn)?
 --   groups       string[]?  group names to register with ManualSave.UI (uses setEnabled)
 --   groupInvert  boolean?   if true, element is enabled when group condition is FALSE
+--   focusGroup   table?     InputNav FocusGroup; if set, button auto-registers for
+--                           keyboard / gamepad navigation and renders a focus ring
+--                           when `btn.isFocused == true`.
 --
 ---@param parent ISPanel
 ---@param opts { x:number, y:number, w:number, h:number, label:string, style:string?, enabled:boolean?, onClick:fun()?, groups:string[]?, groupInvert:boolean? }
 ---@return { btn:ISButton, setLabel:fun(text:string), setEnabled:fun(v:boolean) }
+-- Helper: builds the obj wrapper and registers it with groups + conditional
+-- predicates. Used by every makeButton code path so the obj contract (setLabel,
+-- setEnabled, setVisible) and external bindings stay consistent.
+local function finalizeButton(btn, opts)
+    local obj = { btn = btn }
+    function obj.setLabel(text) btn:setTitle(text) end
+    function obj.setEnabled(v)  btn:setEnable(v)   end
+    function obj.setVisible(v)  btn:setVisible(v)  end
+
+    if opts.groups and ManualSave.UI then
+        for _, g in ipairs(opts.groups) do
+            ManualSave.UI.registerElement(g, obj, opts.groupInvert or false)
+        end
+    end
+    if (opts.enableIf or opts.visibleIf) and ManualSave.UI and ManualSave.UI.registerConditional then
+        ManualSave.UI.registerConditional(obj, {
+            enableIf  = opts.enableIf,
+            visibleIf = opts.visibleIf,
+        })
+        if opts.enableIf then
+            local ok, v = pcall(opts.enableIf)
+            if ok then btn:setEnable(v and true or false) end
+        end
+        if opts.visibleIf then
+            local ok, v = pcall(opts.visibleIf)
+            if ok then btn:setVisible(v and true or false) end
+        end
+    end
+    return obj
+end
+
 function ManualSave.makeButton(parent, opts)
     local TH    = ManualSave.Theme
     local style = opts.style or "normal"
@@ -41,17 +75,31 @@ function ManualSave.makeButton(parent, opts)
     -- Colours by style
     local bR, bG, bB   -- border / outline
     local tR, tG, tB   -- text
+    local fR, fG, fB   -- fill (used when filled=true)
+    local fA = 1       -- fill alpha
     local filled = false
 
     if style == "danger" then
         bR, bG, bB = TH.DANGER_R * 0.7, TH.DANGER_G * 0.7, TH.DANGER_B * 0.7
         tR, tG, tB = TH.DANGER_R, TH.DANGER_G, TH.DANGER_B
+    elseif style == "danger-fill" then
+        -- Subtle danger fill + full-strength border + text. Visually emphasises
+        -- a destructive action that is ready to fire (e.g. Load With Flags when
+        -- at least one flag is set). When the button is disabled (via enableIf
+        -- or static enabled=false) the standard alpha-fade applies.
+        bR, bG, bB = TH.DANGER_R * 0.9, TH.DANGER_G * 0.5, TH.DANGER_B * 0.4
+        tR, tG, tB = TH.DANGER_R, TH.DANGER_G + 0.12, TH.DANGER_B + 0.08
+        fR, fG, fB = TH.DANGER_R, TH.DANGER_G, TH.DANGER_B
+        fA = 0.14
+        filled = true
     elseif style == "accent" then
         bR, bG, bB = TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B
         tR, tG, tB = TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B
     elseif style == "primary" then
         bR, bG, bB = TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B
         tR, tG, tB = 0.10, 0.08, 0.06   -- dark text on accent background
+        fR, fG, fB = TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B
+        fA = 1
         filled = true
     elseif style == "info" then
         bR, bG, bB = TH.MUTED_R, TH.MUTED_G, TH.MUTED_B
@@ -71,32 +119,106 @@ function ManualSave.makeButton(parent, opts)
     btn.textColor   = { r=tR, g=tG, b=tB, a=1 }
 
     if opts.render then
-        btn.render = opts.render
-        if opts.enabled == false then btn:setEnable(false) end
-        if parent then parent:addChild(btn) end
-        local obj = { btn = btn }
-        function obj.setLabel(text) btn:setTitle(text) end
-        function obj.setEnabled(v) btn:setEnable(v) end
-        if opts.groups and ManualSave.UI then
-            for _, g in ipairs(opts.groups) do
-                ManualSave.UI.registerElement(g, obj, opts.groupInvert or false)
+        -- Wrap the caller's render so the InputNav focus ring is drawn on top
+        -- automatically — custom-render buttons should not have to know about
+        -- the focus system to participate in keyboard / gamepad navigation.
+        local userRender = opts.render
+        btn.render = function(self2)
+            userRender(self2)
+            if self2.isFocused and self2.enable
+               and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                for i = 0, TH.FOCUS_BW - 1 do
+                    self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                        TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+                end
             end
         end
-        return obj
+        if opts.enabled == false then btn:setEnable(false) end
+        if parent then parent:addChild(btn) end
+        btn.onActivate = opts.onClick
+        -- InputNav auto-register: walk up parent chain for the nearest panel's
+        -- _inputNavGroup. opts.focusGroup overrides (explicit group), false skips.
+        if opts.focusGroup ~= false then
+            local g = opts.focusGroup
+            if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+                g = ManualSave.InputNav.findNavGroup(parent)
+            end
+            if g then g:add(btn) end
+        end
+        return finalizeButton(btn, opts)
     end
 
-    -- When a filled (primary) button is disabled, its dark text (designed for
-    -- the orange fill) becomes invisible on the dark panel background at 28% alpha.
-    -- Pre-compute a visible disabled text colour that works on any background.
-    local dtR = filled and TH.TEXT_R or tR
-    local dtG = filled and TH.TEXT_G or tG
-    local dtB = filled and TH.TEXT_B or tB
+    if style == "tab" then
+        -- Sidebar tab style: no border, left accent bar + tint when active,
+        -- subtle white hover, left-aligned text. Active state is driven by
+        -- opts.activeIf (callback returning true for the currently-selected tab).
+        btn.borderColor              = { r=0, g=0, b=0, a=0 }
+        btn.backgroundColor          = { r=0, g=0, b=0, a=0 }
+        btn.backgroundColorMouseOver = { r=0, g=0, b=0, a=0 }
+        local activeIf = opts.activeIf or function() return false end
+
+        btn.render = function(self2)
+            local isActive = false
+            pcall(function() isActive = activeIf() and true or false end)
+            local alpha = self2.enable and 1.0 or 0.28
+            local over  = false
+            pcall(function() over = self2:isMouseOver() end)
+
+            if isActive then
+                self2:drawRect(0, 0, self2.width, self2.height, 0.12,
+                    TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
+                self2:drawRect(0, 0, 3, self2.height, alpha,
+                    TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
+            elseif over and self2.enable then
+                self2:drawRect(0, 0, self2.width, self2.height, 0.06, 1, 1, 1)
+            end
+
+            local showFocus = self2.isFocused and self2.enable
+                and ManualSave.InputNav and ManualSave.InputNav.keyboardActive
+            if showFocus then
+                self2:drawRect(0, 0, self2.width, self2.height,
+                    TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
+                for i = 0, TH.FOCUS_BW - 1 do
+                    self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                        TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+                end
+            end
+
+            local fh  = TH.FONT_HGT_SMALL
+            local ty2 = math.floor((self2.height - fh) / 2)
+            local trR = isActive and TH.TEXT_R or TH.MUTED_R
+            local trG = isActive and TH.TEXT_G or TH.MUTED_G
+            local trB = isActive and TH.TEXT_B or TH.MUTED_B
+            self2:drawText(self2:getTitle(), 14, ty2, trR, trG, trB, alpha, UIFont.Small)
+        end
+
+        if opts.enabled == false then btn:setEnable(false) end
+        if parent then parent:addChild(btn) end
+        btn.onActivate = opts.onClick
+        if opts.focusGroup ~= false then
+            local g = opts.focusGroup
+            if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+                g = ManualSave.InputNav.findNavGroup(parent)
+            end
+            if g then g:add(btn) end
+        end
+        return finalizeButton(btn, opts)
+    end
+
+    -- Primary uses dark text on bright orange fill; when disabled the fill fades
+    -- and dark-on-dark becomes invisible, so swap to light text. Other filled
+    -- styles (danger-fill) keep their text colour because they remain readable
+    -- at low alpha on the dark panel background.
+    local needsDisabledTextSwap = (style == "primary")
+    local dtR = needsDisabledTextSwap and TH.TEXT_R or tR
+    local dtG = needsDisabledTextSwap and TH.TEXT_G or tG
+    local dtB = needsDisabledTextSwap and TH.TEXT_B or tB
 
     btn.render = function(self2)
         local alpha = self2.enable and 1.0 or 0.28
         if filled then
-            local fa = self2.enable and 1.0 or 0.28
-            self2:drawRect(0, 0, self2.width, self2.height, fa, bR, bG, bB)
+            local fillAlpha = (self2.enable and 1.0 or 0.28) * fA
+            self2:drawRect(0, 0, self2.width, self2.height, fillAlpha, fR, fG, fB)
             if self2.enable then
                 local over = false
                 pcall(function() over = self2:isMouseOver() end)
@@ -113,10 +235,26 @@ function ManualSave.makeButton(parent, opts)
                 end
             end
         end
+        -- Focus visuals only render while keyboard / gamepad navigation mode is
+        -- active. The mode toggles off as soon as the user touches the mouse.
+        local showFocus = self2.isFocused and self2.enable and style ~= "info"
+            and ManualSave.InputNav and ManualSave.InputNav.keyboardActive
+        if showFocus then
+            self2:drawRect(0, 0, self2.width, self2.height,
+                TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
+        end
+        -- Normal border
         if style == "info" then
             ManualSave.Draw.circleBorder(self2, 1, 1, self2.width - 2, self2.height - 2, alpha, bR, bG, bB)
         else
             self2:drawRectBorder(0, 0, self2.width, self2.height, alpha, bR, bG, bB)
+        end
+        -- Focus ring on top of the normal border (thicker, brighter).
+        if showFocus then
+            for i = 0, TH.FOCUS_BW - 1 do
+                self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                    TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+            end
         end
         local fh = getTextManager():getFontHeight(UIFont.Small)
         local tw = getTextManager():MeasureStringX(UIFont.Small, self2:getTitle())
@@ -143,21 +281,19 @@ function ManualSave.makeButton(parent, opts)
     if opts.enabled == false then btn:setEnable(false) end
     if parent then parent:addChild(btn) end
 
-    local obj = { btn = btn }
-
-    ---@param text string
-    function obj.setLabel(text) btn:setTitle(text) end
-
-    ---@param v boolean
-    function obj.setEnabled(v) btn:setEnable(v) end
-
-    if opts.groups and ManualSave.UI then
-        for _, g in ipairs(opts.groups) do
-            ManualSave.UI.registerElement(g, obj, opts.groupInvert or false)
+    -- InputNav: expose onActivate (live click) and auto-register into the closest
+    -- panel's focus group. opts.focusGroup forces an explicit group; passing
+    -- false suppresses registration entirely (for non-navigable buttons).
+    btn.onActivate = opts.onClick
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
         end
+        if g then g:add(btn) end
     end
 
-    return obj
+    return finalizeButton(btn, opts)
 end
 
 -- Small circular info button. Opens a popup tooltip on click.
@@ -258,6 +394,11 @@ function ManualSave.makeInfoButton(parent, opts)
     end
 
     if parent then parent:addChild(btn) end
+
+    -- Info buttons (small "i" circles) are mouse-only by design: they reveal
+    -- a hover/click popup with secondary information. Keyboard / gamepad
+    -- navigation skips them (no focus group registration).
+
     return { btn = btn }
 end
 
@@ -280,7 +421,7 @@ function ManualSave.makeToggleCard(parent, opts)
     local FHS   = TH.FONT_HGT_SMALL
     local label = opts.label or ""
     local desc  = opts.desc  or ""
-    return ManualSave.makePanel(parent, {
+    local card = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y or 0, w=opts.w, h=opts.h,
         bg={ r=0, g=0, b=0, a=0 }, border=false,
         prerender = function(fc)
@@ -294,6 +435,15 @@ function ManualSave.makeToggleCard(parent, opts)
                 fc:drawRect(0, 0, fc.width, fc.height, 1, 0.07, 0.05, 0.05)
                 fc:drawRectBorder(0, 0, fc.width, fc.height, 1,
                     TH.LINE_R*0.6, TH.LINE_G*0.6, TH.LINE_B*0.6)
+            end
+            -- Focus ring shown only while keyboard / gamepad mode is active.
+            if fc.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                fc:drawRect(0, 0, fc.width, fc.height,
+                    TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
+                for i = 0, TH.FOCUS_BW - 1 do
+                    fc:drawRectBorder(i, i, fc.width - i*2, fc.height - i*2, 1,
+                        TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+                end
             end
             local cbSz = 13
             local cbY2 = 4 + math.floor((FHS - cbSz) / 2)
@@ -311,6 +461,77 @@ function ManualSave.makeToggleCard(parent, opts)
             return true
         end,
     })
+    card.onActivate = opts.onToggle
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then g:add(card) end
+    end
+    return card
+end
+
+-- Key-rebind button.
+--
+-- A simple two-state button: idle (shows the currently-bound key name) and
+-- capturing (shows a "Press a key..." prompt and listens for the next key).
+--
+-- opts:
+--   x, y, w, h  number
+--   getValue    fun():string         current binding (e.g. "K", "F9", "")
+--   onChange    fun(newKey:string)   called when a new key is captured
+--   empty       string?              label when binding is empty (default "—")
+--   title       string?              modal title (default localized)
+--   body        string?              modal prompt (default localized)
+--
+-- Activating the button (mouse click, Enter, A on gamepad) opens an aggressive
+-- modal popup that captures the next keyboard key pressed. The modal includes
+-- a Cancel button and a "Clear binding" button so the user can unbind the
+-- shortcut entirely. The label on this button auto-refreshes when the bound
+-- value changes (via update() polling).
+---@param parent ISPanel
+---@param opts table
+---@return { btn:ISButton, setValue:fun(key:string) }
+function ManualSave.makeKeyBindButton(parent, opts)
+    local function currentLabel()
+        local v = opts.getValue and opts.getValue() or ""
+        if v == "" then return opts.empty or "—" end
+        return v
+    end
+
+    local btn = ManualSave.makeButton(parent, {
+        x=opts.x, y=opts.y, w=opts.w, h=opts.h,
+        label = currentLabel(),
+        style = "normal",
+        onClick = function()
+            ManualSave.openKeyCaptureDialog({
+                title = opts.title,
+                body  = opts.body,
+                allowUnbind = true,
+                onKey = function(name)
+                    if opts.onChange then pcall(opts.onChange, name) end
+                end,
+            })
+        end,
+    })
+    -- Keep label in sync if external state changes (e.g. Reset to defaults).
+    local prev = nil
+    local origUpdate = btn.btn.update
+    btn.btn.update = function(self2)
+        if origUpdate then origUpdate(self2) end
+        local v = opts.getValue and opts.getValue() or ""
+        if v ~= prev then
+            prev = v
+            self2:setTitle(currentLabel())
+        end
+    end
+
+    local obj = { btn = btn.btn }
+    function obj.setValue(v)
+        if opts.onChange then pcall(opts.onChange, v) end
+    end
+    return obj
 end
 
 print("[ManualSaveMod] UI/Base/Widgets/Elements/Button.lua loaded.")

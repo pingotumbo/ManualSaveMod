@@ -71,8 +71,13 @@ local function poll()
     _hbTick = _hbTick + 1
     if _hbTick % 120 == 0 then
         local val
-        local r = getFileReader(HB_FILE, true)
-        if r then val = r:readLine(); r:close() end
+        -- pcall: if Windows briefly denies the read because someone holds the
+        -- file (the watcher mid-write, antivirus, Windows Indexing...), do not
+        -- abort the OnRender handler — just treat the heartbeat as missed and
+        -- retry next tick. The watcher writes with FileShare.Read explicitly to
+        -- avoid races, this is belt-and-suspenders.
+        local ok, r = pcall(getFileReader, HB_FILE, true)
+        if ok and r then val = r:readLine(); r:close() end
         if val == nil then
             _hbAlive = false
         else
@@ -104,7 +109,7 @@ function ManualSave.SignalBus.send(action, params, onDone, timeout)
     -- While a full save is committing, only the SAVE signal itself is allowed through.
     -- Anything else (DELETE, RENAME, CLONE, …) would overwrite the SAVE in the shared
     -- signal file before the Watcher reads it, losing the backup.
-    if action ~= "SAVE" and ManualSave.SaveManager and ManualSave.SaveManager._quitting then
+    if action ~= "SAVE" and ManualSave.SaveLock and ManualSave.SaveLock.isLocked() then
         print("[ManualSaveMod] SignalBus: IGNORED " .. action .. " (full save in progress)")
         if onDone then pcall(onDone, "ERROR", { STATUS="ERROR", ERROR="quitting", ACTION=action }) end
         return

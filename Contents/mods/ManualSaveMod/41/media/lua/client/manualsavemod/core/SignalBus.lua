@@ -56,6 +56,7 @@ local function poll()
         _pending.tick = _pending.tick + 1
         local done = parseDone()
         if done then
+            if done.ACTION and done.ACTION ~= _pending.action then return end
             local p = _pending
             _pending = nil
             pcall(p.onDone, done.STATUS, done)
@@ -100,6 +101,15 @@ Events.OnRenderTick.Add(poll)
 ---@param onDone fun(status:string, result:table)?
 ---@param timeout number?
 function ManualSave.SignalBus.send(action, params, onDone, timeout)
+    -- While a full save is committing, only the SAVE signal itself is allowed through.
+    -- Anything else (DELETE, RENAME, CLONE, …) would overwrite the SAVE in the shared
+    -- signal file before the Watcher reads it, losing the backup.
+    if action ~= "SAVE" and ManualSave.SaveLock and ManualSave.SaveLock.isLocked() then
+        print("[ManualSaveMod] SignalBus: IGNORED " .. action .. " (full save in progress)")
+        if onDone then pcall(onDone, "ERROR", { STATUS="ERROR", ERROR="quitting", ACTION=action }) end
+        return
+    end
+
     -- Reset done file so a stale OK is never picked up
     local dw = getFileWriter(DONE_FILE, true, false)
     if dw then dw:write("STATUS=PENDING\r\n"); dw:close() end

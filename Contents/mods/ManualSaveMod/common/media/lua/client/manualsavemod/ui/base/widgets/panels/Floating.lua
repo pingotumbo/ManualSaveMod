@@ -31,10 +31,32 @@ function ManualSave.makeFloatingPanel(opts)
     local titleH = TH.FONT_HGT_LARGE + 22
 
     local p = ISPanel:new(px, py, opts.w, opts.h)
-    p.backgroundColor = { r=TH.BG_R,  g=TH.BG_G,  b=TH.BG_B,  a=0.98 }
-    p.borderColor     = { r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=1   }
+    p.backgroundColor = { r=TH.BG_R, g=TH.BG_G, b=TH.BG_B, a=1 }
+    p.borderColor     = { r=0, g=0, b=0, a=0 }   -- drawn manually below
     p:initialise()
     p:instantiate()
+    p.prerender = function(self2)
+        ISPanel.prerender(self2)
+    end
+
+    p.render = function(self2)
+        local TH2 = ManualSave.Theme
+        if opts.borderStyle == "accent" then
+            -- Solid 2-pixel accent border on all four edges (used by HelpScreen
+            -- and any other floating panel that wants a stronger frame).
+            local bw = 2
+            self2:drawRect(0, 0, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            self2:drawRect(0, self2.height-bw, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            self2:drawRect(0, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+            self2:drawRect(self2.width-bw, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+        else
+            -- Default: 2-tone accent border (outer dim, inner faint glow)
+            self2:drawRectBorder(0, 0, self2.width, self2.height, 0.85,
+                TH2.ACCENT_R * 0.85, TH2.ACCENT_G * 0.60, TH2.ACCENT_B * 0.35)
+            self2:drawRectBorder(1, 1, self2.width - 2, self2.height - 2, 0.22,
+                TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
+        end
+    end
 
     -- Title bar background
     local titleBar = ISPanel:new(0, 0, opts.w, titleH)
@@ -76,6 +98,21 @@ function ManualSave.makeFloatingPanel(opts)
         if ISPanel.onMouseUp then ISPanel.onMouseUp(self2, mx, my) end
     end
 
+    -- Analog-stick drag: AnalogStick calls this every render frame when the
+    -- right stick is tilted and no focused widget exposes onAnalogScroll.
+    -- dx/dy are pre-scaled pixel deltas; we clamp to the visible screen so the
+    -- panel can't be dragged completely off-screen.
+    p.onAnalogDrag = function(self2, dx, dy)
+        if not dx or not dy or (dx == 0 and dy == 0) then return false end
+        local sw = getCore():getScreenWidth()
+        local sh = getCore():getScreenHeight()
+        local nx = math.max(-self2.width  + 60, math.min(sw - 60, self2:getX() + dx))
+        local ny = math.max(0,                  math.min(sh - 30, self2:getY() + dy))
+        self2:setX(nx)
+        self2:setY(ny)
+        return true
+    end
+
     local callbacks = {}
     local closing   = false
 
@@ -90,18 +127,47 @@ function ManualSave.makeFloatingPanel(opts)
         table.insert(callbacks, fn)
     end
 
+    -- Joypad focus capture state. When the panel is opened with a joypadData,
+    -- we record the previous focus + inMainMenu flag so we can hand them back
+    -- when the panel closes. Without this restore, even after the panel goes
+    -- away the joypadData would still point at the closed inner panel.
+    local _savedJoypadData     = nil
+    local _savedJoypadOldFocus = nil
+    local _savedInMainMenuFlag = nil
+
     local function doClose()
         if closing then return end
         closing = true
         p:setVisible(false)
         p:removeFromUIManager()
+        if _savedJoypadData then
+            if _savedInMainMenuFlag ~= nil then
+                _savedJoypadData.inMainMenu = _savedInMainMenuFlag
+            end
+            _savedJoypadData.focus = _savedJoypadOldFocus
+            if updateJoypadFocus then updateJoypadFocus(_savedJoypadData) end
+            _savedJoypadData     = nil
+            _savedJoypadOldFocus = nil
+            _savedInMainMenuFlag = nil
+        end
         for _, fn in ipairs(callbacks) do pcall(fn) end
     end
 
-    function obj.open()
+    function obj.open(joypadData)
         p:addToUIManager()
         p:setVisible(true)
         p:bringToTop()
+        -- Joypad focus transfer (vanilla ISPanelJoypad.setVisible pattern).
+        -- Also clear inMainMenu while we own the focus, otherwise MainScreen
+        -- and JoypadState.reactivateJoypad will re-steal it every frame.
+        if joypadData then
+            _savedJoypadData     = joypadData
+            _savedJoypadOldFocus = joypadData.focus
+            _savedInMainMenuFlag = joypadData.inMainMenu
+            joypadData.inMainMenu = false
+            joypadData.focus      = p
+            if updateJoypadFocus then updateJoypadFocus(joypadData) end
+        end
     end
 
     function obj.close()
@@ -124,6 +190,23 @@ function ManualSave.makeFloatingPanel(opts)
     xBtn.borderColor = { r=TH.LINE_R, g=TH.LINE_G, b=TH.LINE_B, a=0.5 }
     xBtn.textColor   = { r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=1 }
     p:addChild(xBtn)
+    -- InputNav: expose onActivate so Enter on the focused X fires close.
+    -- The render below adds the focus ring; actual nav registration happens
+    -- after installPanelNav, deferred to obj.open so X sits at the END of
+    -- the tab order (preserves content-first default focus).
+    xBtn.onActivate = function() doClose() end
+
+    -- Render the focus ring on the X button when keyboard mode is active.
+    local xOrigRender = xBtn.render
+    xBtn.render = function(self2)
+        if xOrigRender then xOrigRender(self2) end
+        if self2.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+            for i = 0, TH.FOCUS_BW - 1 do
+                self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                    TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+            end
+        end
+    end
 
     -- ESC closes; opt callback runs alongside it
     p.onKeyRelease = function(self2, key)
@@ -134,16 +217,47 @@ function ManualSave.makeFloatingPanel(opts)
     if opts.onFocus      then p.onFocus      = opts.onFocus      end
     if opts.onLostFocus  then p.onLostFocus  = opts.onLostFocus  end
     if opts.onKeyPressed then p.onKeyPressed = opts.onKeyPressed end
-    if opts.render       then p.render       = opts.render       end
+    if opts.render then
+        local _borderRender = p.render
+        local _userRender   = opts.render
+        p.render = function(self2) _borderRender(self2); _userRender(self2) end
+    end
 
-    -- Always stay on top; wrap opts.update if provided
+    -- Stay on top unless a modal is open; wrap opts.update if provided
     local _userUpdate = opts.update
     p.update = function(self2)
         ISPanel.update(self2)
-        self2:bringToTop()
+        if (ManualSave._uiTopLock or 0) == 0 then
+            self2:bringToTop()
+        end
         if _userUpdate then _userUpdate(self2) end
     end
-    if opts.noBorder     then p.borderColor  = { r=0, g=0, b=0, a=0 } end
+    if opts.noBorder then p.render = function() end end
+
+    -- InputNav: auto-create a focus manager + group for this floating window.
+    -- Callers that need a custom multi-group layout (e.g. SettingsScreen, which
+    -- uses two cross-linked groups for nav + content) pass installNav=false
+    -- and wire the manager themselves on the returned obj.panel.
+    if opts.installNav ~= false
+       and ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
+        ManualSave.InputNav.installPanelNav(p, obj, { id="floating" })
+        -- Defer X button registration so it sits at the END of the tab order
+        -- (after all content widgets the caller will add later between makeFloatingPanel
+        -- returning and d.open() being called). _inputNavRegisterAtEnd drains its
+        -- queue inside the open() wrapper installed by installPanelNav.
+        if p._inputNavRegisterAtEnd then p._inputNavRegisterAtEnd(xBtn) end
+        -- Tell AnalogStick that the right stick should drag this panel when
+        -- no focused widget consumes the scroll input.
+        if p._inputNav then
+            p._inputNav._dragTarget = p
+            -- Flag this manager as a floating window so the L1/R1 rotator
+            -- (in InputNav.lua) can include it when cycling between open
+            -- floating panels — non-floating screens are skipped.
+            p._inputNav._isFloating = true
+        end
+    end
+    -- Expose the X button so custom-nav callers can register it themselves.
+    obj.xButton = xBtn
 
     if opts.onClose then obj.onClose(opts.onClose) end
 
@@ -199,7 +313,9 @@ function ManualSave.makeExpandPanel(opts)
         -- Stay on top of the parent screen when other panels are clicked.
         d.panel.update = function(self2)
             ISPanel.update(self2)
-            self2:bringToTop()
+            if (ManualSave._uiTopLock or 0) == 0 then
+                self2:bringToTop()
+            end
         end
         d.open()
     end

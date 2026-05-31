@@ -55,12 +55,14 @@ function ManualSave.makeModalPanel(opts)
     local function doClose()
         if closing then return end
         closing = true
+        ManualSave._uiTopLock = math.max(0, (ManualSave._uiTopLock or 0) - 1)
         overlay:setVisible(false)
         overlay:removeFromUIManager()
         for _, fn in ipairs(callbacks) do pcall(fn) end
     end
 
     function obj.open()
+        ManualSave._uiTopLock = (ManualSave._uiTopLock or 0) + 1
         overlay:addToUIManager()
         overlay:setVisible(true)
         overlay:bringToTop()
@@ -73,6 +75,13 @@ function ManualSave.makeModalPanel(opts)
     -- ESC closes
     overlay.onKeyRelease = function(_, key)
         if key == Keyboard.KEY_ESCAPE then doClose() end
+    end
+
+    -- InputNav: auto-create a focus manager + group for this modal. Child
+    -- widgets created via makeButton/makeToolbar/etc. with no explicit
+    -- focusGroup will walk up the parent chain and register themselves here.
+    if ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
+        ManualSave.InputNav.installPanelNav(p, obj, { id="modal" })
     end
 
     if opts.onClose then obj.onClose(opts.onClose) end

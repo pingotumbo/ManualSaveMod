@@ -65,6 +65,107 @@ function ManualSave.makePanel(parent, opts)
     return p
 end
 
+-- Scrollable container panel. Same API as makePanel, but enables PZ's native
+-- setScrollChildren(true) + addScrollBars() so any children added after it
+-- exceed the visible height are scrollable.
+--
+-- Extras automatically wired:
+--   - Mouse wheel scrolls (vanilla default already does this once
+--     scroll-children is on; we keep an explicit handler so a caller-supplied
+--     onMouseWheel can compose with it).
+--   - panel.onAnalogScroll(_, dx, dy) is set so AnalogStick (right stick)
+--     can scroll the container when it's the focused/visible target.
+--   - panel.onArrow returns false so directional navigation never gets
+--     trapped by the container itself — focus moves between child widgets
+--     through the standard FocusGroup mechanism.
+--   - panel.ensureChildVisible(child) scrolls the viewport so the given
+--     child is fully in view (useful from FocusGroup focus-change callbacks).
+--
+-- opts: same as makePanel.
+---@param parent ISPanel?
+---@param opts table
+---@return ISPanel
+function ManualSave.makeScrollPanel(parent, opts)
+    local p = ManualSave.makePanel(parent, opts)
+
+    -- Enable native scroll-children + scrollbars on the underlying ISPanel.
+    -- Java side handles wheel + drag interaction; we just call the setup once.
+    pcall(function() p:setScrollChildren(true)        end)
+    pcall(function() p:addScrollBars()                end)
+
+    -- Keep mouse wheel handler unless caller already provided one. PZ scrolls
+    -- automatically when scrollchildren are enabled, so this is mostly a
+    -- safety net; if caller passed opts.onMouseWheel, makePanel already wired it.
+    if not opts.onMouseWheel then
+        p.onMouseWheel = function(self2, delta)
+            local step = 30
+            self2:setYScroll(self2:getYScroll() - delta * step)
+            return true
+        end
+    end
+
+    -- Right-stick continuous scroll (AnalogStick contract).
+    p.onAnalogScroll = function(self2, _, dy)
+        if not dy or dy == 0 then return false end
+        self2:setYScroll(self2:getYScroll() - dy)
+        return true
+    end
+
+    -- Containers don't consume arrow keys; focus passes through to children.
+    p.onArrow = function() return false end
+
+    -- Group-active focus ring: draws a yellow border around the container
+    -- whenever its associated focus group (set by the caller as
+    -- self._inputNavGroup) is the currently-active group of the topmost
+    -- FocusManager. This makes the scroll panel feel like a single navigable
+    -- region, matching how a vanilla scroll list visually "owns" its area
+    -- while focus is inside it.
+    --
+    -- We only draw while keyboardActive == true so mouse-only users don't get
+    -- the ring (keyboard / gamepad nav flips that flag on; mouse activity
+    -- turns it back off).
+    local origRender = p.render
+    p.render = function(self2)
+        if origRender then origRender(self2) else ISPanel.render(self2) end
+        local IN = ManualSave.InputNav
+        if not IN or not IN.keyboardActive then return end
+        local g = self2._inputNavGroup
+        if not g then return end
+        local mgr = IN.activeManager and IN.activeManager()
+        if not mgr or mgr.current ~= g then return end
+        local TH2 = ManualSave.Theme
+        local bw  = TH2.FOCUS_BW or 2
+        local rR  = TH2.FOCUS_R  or 1.0
+        local rG  = TH2.FOCUS_G  or 0.85
+        local rB  = TH2.FOCUS_B  or 0.20
+        for i = 0, bw - 1 do
+            self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1, rR, rG, rB)
+        end
+    end
+
+    -- Scroll the viewport so `child` is fully visible. `child` must be a
+    -- direct or indirect descendant whose getY()/getHeight() are valid in this
+    -- panel's coordinate space (PZ's setYScroll is in the panel's own space).
+    function p.ensureChildVisible(child)
+        if not child then return end
+        local cy, ch
+        local ok = pcall(function()
+            cy = tonumber(child:getY())     or 0
+            ch = tonumber(child:getHeight()) or 0
+        end)
+        if not ok then return end
+        local top    = -p:getYScroll()
+        local bottom = top + p:getHeight()
+        if cy < top then
+            p:setYScroll(-cy)
+        elseif cy + ch > bottom then
+            p:setYScroll(-(cy + ch - p:getHeight()))
+        end
+    end
+
+    return p
+end
+
 -- Creates a panel that immediately hides a set of target elements and
 -- restores them when destroy() is called.  Used to implement cover panels
 -- (e.g. MoreScreen overlaying LoadScreen detail area) without scattering
@@ -93,10 +194,85 @@ function ManualSave.makeCoverPanel(parent, opts)
 
     local obj = { panel = panel }
 
+    -- InputNav integration: cover panels SHARE the surrounding screen's nav
+    -- group rather than isolating, so widgets that remain visible under the
+    -- cover (e.g. the LoadScreen footer buttons that MoreScreen keeps showing)
+    -- stay reachable by keyboard alongside the cover's own widgets.
+    --
+    -- Three pieces:
+    --   1. Expose the parent group on the cover so child widgets walking up
+    --      via findNavGroup land here and register into the parent group.
+    --   2. Snapshot the parent group size; on destroy, remove every widget
+    --      added during the cover's lifetime (avoids stale references after
+    --      the cover sub-tree is gone).
+    --   3. Temporarily override the parent manager's onCancel so Esc closes
+    --      the cover rather than the surrounding screen; restored on destroy.
+    local IN           = ManualSave.InputNav
+    local parentGroup  = IN and IN.findNavGroup(parent)   or nil
+    local parentMgr    = IN and IN.findNavManager(parent) or nil
+    local initialCount = parentGroup and #parentGroup.items or 0
+    panel._inputNavGroup = parentGroup
+    panel._inputNav      = parentMgr
+
+    local prevOnCancel = nil
+    if parentMgr then
+        prevOnCancel = parentMgr.onCancel
+        parentMgr.onCancel = function() obj.destroy() end
+    end
+
+    -- Spatial auto-hide: hide every nav-registered widget that overlaps the
+    -- cover's bounding box. Avoids hardcoding "hideTargets" lists in callers —
+    -- the cover panel just claims its rectangle and any pre-existing navigable
+    -- widget under it is hidden automatically. Widgets OUTSIDE the cover area
+    -- (e.g. footer buttons below it) can still be hidden via opts.hideTargets.
+    --
+    -- Coordinates must be ABSOLUTE: widgets nested inside sub-panels (toolbar
+    -- buttons, items in cols.left/cols.right, etc.) report getX/getY relative
+    -- to their direct parent, so we'd miss them with local coords.
+    local autoPrev = {}
+    if parentGroup then
+        local cx, cy, cw, ch = 0, 0, 0, 0
+        pcall(function()
+            cx = tonumber(panel:getAbsoluteX()) or 0
+            cy = tonumber(panel:getAbsoluteY()) or 0
+            cw = tonumber(panel:getWidth())     or 0
+            ch = tonumber(panel:getHeight())    or 0
+        end)
+        for _, w in ipairs(parentGroup.items) do
+            local inCover = false
+            pcall(function()
+                local wx = tonumber(w:getAbsoluteX()) or 0
+                local wy = tonumber(w:getAbsoluteY()) or 0
+                local ww = tonumber(w:getWidth())     or 0
+                local wh = tonumber(w:getHeight())    or 0
+                inCover = wx < cx + cw and wx + ww > cx
+                      and wy < cy + ch and wy + wh > cy
+            end)
+            if inCover then
+                local ok, v = pcall(function() return w:isVisible() end)
+                if ok and v then
+                    autoPrev[w] = true
+                    pcall(function() w:setVisible(false) end)
+                end
+            end
+        end
+    end
+
     function obj.destroy()
+        if parentMgr then parentMgr.onCancel = prevOnCancel end
+        if parentGroup then
+            while #parentGroup.items > initialCount do
+                local last = parentGroup.items[#parentGroup.items]
+                parentGroup:remove(last)
+            end
+        end
         if parent then pcall(function() parent:removeChild(panel) end) end
         for i, t in ipairs(targets) do
             if t and prevVis[i] then pcall(function() t:setVisible(true) end) end
+        end
+        -- Restore spatially auto-hidden widgets
+        for w, _ in pairs(autoPrev) do
+            pcall(function() w:setVisible(true) end)
         end
     end
 
@@ -125,27 +301,42 @@ end
 ---@param parent ISPanel?
 ---@param opts table
 ---@return ISPanel
+-- Returns { panel, setText, setVisible, setColor }.
+-- setText / setColor drive the display for explicit updates.
+-- opts.getText / opts.getR/G/B/A callbacks are also supported for per-frame dynamic labels.
 function ManualSave.makeLabel(parent, opts)
     local TH   = ManualSave.Theme
     local font = opts.font or UIFont.Small
     local h    = opts.h or (TH.FONT_HGT_SMALL + 2)
     local txY  = opts.textY or 0
-    if opts.vCenter then
-        txY = math.floor((h - TH.FONT_HGT_SMALL) / 2)
-    end
-    return ManualSave.makePanel(parent, {
+    if opts.vCenter then txY = math.floor((h - TH.FONT_HGT_SMALL) / 2) end
+
+    local _text = opts.text or ""
+    local _r    = opts.r or TH.TEXT_R
+    local _g    = opts.g or TH.TEXT_G
+    local _b    = opts.b or TH.TEXT_B
+    local _a    = opts.a or 1
+
+    local panel = ManualSave.makePanel(parent, {
         x=opts.x or 0, y=opts.y or 0, w=opts.w, h=h,
         bg=opts.bg or { r=0, g=0, b=0, a=0 }, border=false,
         prerender = function(lp)
-            local txt = opts.getText and opts.getText() or (opts.text or "")
+            local txt = opts.getText and opts.getText() or _text
             if not txt or txt == "" then return end
-            local r = opts.getR and opts.getR() or (opts.r or TH.TEXT_R)
-            local g = opts.getG and opts.getG() or (opts.g or TH.TEXT_G)
-            local b = opts.getB and opts.getB() or (opts.b or TH.TEXT_B)
-            local a = opts.getA and opts.getA() or (opts.a or 1)
+            local r = opts.getR and opts.getR() or _r
+            local g = opts.getG and opts.getG() or _g
+            local b = opts.getB and opts.getB() or _b
+            local a = opts.getA and opts.getA() or _a
             lp:drawText(txt, opts.textX or 0, txY, r, g, b, a, font)
         end,
     })
+
+    return {
+        panel      = panel,
+        setText    = function(txt)          _text = txt or ""          end,
+        setVisible = function(v)            panel:setVisible(v)        end,
+        setColor   = function(r, g, b, a)   _r,_g,_b,_a = r,g,b,a    end,
+    }
 end
 
 -- Creates a panel with a top accent bar drawn internally via prerender.

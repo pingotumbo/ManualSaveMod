@@ -1,7 +1,7 @@
 -- UI/Base/Elements/TextInput.lua
 -- Single-line text input with optional search icon and placeholder text.
 -- Adds the input to parent automatically.
----@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field
+---@diagnostic disable: undefined-global, undefined-doc-name, undefined-field, inject-field, redundant-parameter
 
 ManualSave = ManualSave or {}
 
@@ -60,6 +60,17 @@ function ManualSave.makeTextInput(parent, opts)
         local ba = focused and 0.7 or 1
         self2:drawRectBorder(0, 0, self2.width, self2.height, ba, br, bg, bb)
 
+        -- InputNav focus ring: keyboard navigation arrived here but the user has
+        -- not started typing yet. Shows the same orange focus accent as buttons.
+        if self2.isFocused and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+            self2:drawRect(0, 0, self2.width, self2.height,
+                TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
+            for i = 0, TH.FOCUS_BW - 1 do
+                self2:drawRectBorder(i, i, self2.width - i*2, self2.height - i*2, 1,
+                    TH.FOCUS_R, TH.FOCUS_G, TH.FOCUS_B)
+            end
+        end
+
         -- Search icon (drawn magnifier — no Unicode)
         if opts.icon == "search" then
             local r  = math.floor(math.min(self2.height * 0.28, 5))
@@ -77,10 +88,99 @@ function ManualSave.makeTextInput(parent, opts)
         end
     end
 
-    if opts.onFocus          then innerEntry.onFocus          = opts.onFocus          end
-    if opts.onLostFocus      then innerEntry.onLostFocus      = opts.onLostFocus      end
+    -- InputNav integration with PZ's ISTextEntryBox key model.
+    --
+    -- PZ does NOT fire a generic onKeyPressed on text entries; instead it routes
+    -- specific keys to dedicated callbacks:
+    --   onPressUp / onPressDown  — Up / Down arrow keys
+    --   onOtherKey(key)          — everything else (Esc, Tab, Left/Right, letters)
+    --   onCommandEntered         — Enter
+    --   onLostFocus              — fires when focus is released (programmatically or by click)
+    --
+    -- Hooking the wrong callback was the reason Esc / arrows did not release
+    -- typing focus in earlier versions.
+    local capturedByInputNav = false
+    local function navBeginCapture()
+        if capturedByInputNav then return end
+        capturedByInputNav = true
+        if ManualSave.InputNav and ManualSave.InputNav.beginTextCapture then
+            ManualSave.InputNav.beginTextCapture(function()
+                pcall(function() innerEntry:unfocus() end)
+            end)
+        end
+        -- Visual: while typing we are conceptually in "mouse mode" — hide all
+        -- focus rings so the cursor / typing field is the only highlight on screen.
+        if ManualSave.InputNav and ManualSave.InputNav.setKeyboardActive then
+            ManualSave.InputNav.setKeyboardActive(false)
+        end
+    end
+    local function navEndCapture()
+        if not capturedByInputNav then return end
+        capturedByInputNav = false
+        if ManualSave.InputNav and ManualSave.InputNav.endTextCapture then
+            ManualSave.InputNav.endTextCapture()
+        end
+    end
+
+    -- Re-enter keyboard mode and dispatch the released key to nav so focus
+    -- moves to the next/previous widget in one keystroke.
+    local function releaseAndDispatch(key)
+        pcall(function() innerEntry:unfocus() end)
+        if ManualSave.InputNav then
+            ManualSave.InputNav.setKeyboardActive(true)
+            if key then
+                local mgr = ManualSave.InputNav.activeManager()
+                if mgr and ManualSave.InputNav.InputRouter then
+                    ManualSave.InputNav.InputRouter.handleKey(mgr, key)
+                end
+            end
+        end
+    end
+
+    local userOnFocus       = opts.onFocus
+    local userOnLostFocus   = opts.onLostFocus
+    local userOnPressDown   = opts.onPressDown
+    local userOnPressUp     = opts.onPressUp
+    local userOnOtherKey    = opts.onOtherKey
+
+    innerEntry.onFocus = function(self2, x, y)
+        navBeginCapture()
+        if userOnFocus then userOnFocus(self2, x, y) end
+    end
+    -- Mouse click on the text entry: PZ focuses it automatically, but the
+    -- onFocus callback is not guaranteed to fire. Hook onClick to make sure
+    -- typing-mode side effects (keyboardActive=false, text-capture flag) run.
+    local userOnClick = innerEntry.onClick
+    innerEntry.onClick = function(self2, x, y)
+        navBeginCapture()
+        if userOnClick then userOnClick(self2, x, y) end
+    end
+    innerEntry.onLostFocus = function(self2, x, y)
+        navEndCapture()
+        if userOnLostFocus then userOnLostFocus(self2, x, y) end
+    end
+    -- Down arrow released-while-typing → release typing + nav forward.
+    innerEntry.onPressDown = function(self2)
+        releaseAndDispatch(Keyboard.KEY_DOWN)
+        if userOnPressDown then userOnPressDown(self2) end
+    end
+    innerEntry.onPressUp = function(self2)
+        releaseAndDispatch(Keyboard.KEY_UP)
+        if userOnPressUp then userOnPressUp(self2) end
+    end
+    -- onOtherKey catches everything else PZ routes here, including Esc and Tab.
+    -- Esc releases typing without moving nav; Tab releases and advances nav.
+    -- Letters / cursor keys fall through to PZ for normal typing.
+    innerEntry.onOtherKey = function(self2, key)
+        if key == Keyboard.KEY_ESCAPE then
+            releaseAndDispatch(nil)
+        elseif key == Keyboard.KEY_TAB then
+            releaseAndDispatch(Keyboard.KEY_TAB)
+        elseif userOnOtherKey then
+            userOnOtherKey(self2, key)
+        end
+    end
     if opts.onCommandEntered then innerEntry.onCommandEntered = opts.onCommandEntered end
-    if opts.onKeyPressed     then innerEntry.onKeyPressed     = opts.onKeyPressed     end
     if opts.onKeyRelease     then innerEntry.onKeyRelease     = opts.onKeyRelease     end
 
     -- onChange wired via the text entry's internal callback
@@ -99,6 +199,30 @@ function ManualSave.makeTextInput(parent, opts)
 
     if parent then parent:addChild(wrap) end
     if opts.visible == false then wrap:setVisible(false) end
+
+    -- InputNav auto-register: text inputs are navigable items in the parent
+    -- screen's nav group. Tab/arrow keys move focus to them; once focused they
+    -- begin a text-capture (see beginTextCapture above) so arrow keys move the
+    -- cursor rather than navigating away.
+    if opts.focusGroup ~= false then
+        local g = opts.focusGroup
+        if not g and ManualSave.InputNav and ManualSave.InputNav.findNavGroup then
+            g = ManualSave.InputNav.findNavGroup(parent)
+        end
+        if g then
+            -- Enter on a nav-focused TextInput puts it in typing mode (PZ
+            -- keyboard focus on the ISTextEntryBox). We call navBeginCapture
+            -- ourselves rather than waiting for innerEntry.onFocus to fire —
+            -- PZ does not reliably propagate focus() to the onFocus callback,
+            -- so this guarantees keyboardActive flips off and the focus ring
+            -- disappears the instant typing starts.
+            wrap.onActivate = function()
+                pcall(function() innerEntry:focus() end)
+                navBeginCapture()
+            end
+            g:add(wrap)
+        end
+    end
 
     local obj = {}
 
@@ -121,6 +245,7 @@ function ManualSave.makeTextInput(parent, opts)
     function obj.unfocus() pcall(function() innerEntry:unfocus() end) end
 
     obj.input = innerEntry
+    obj.wrap  = wrap   -- outer panel; useful for cover-panel hideTargets
 
     return obj
 end

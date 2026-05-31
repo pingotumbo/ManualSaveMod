@@ -36,6 +36,29 @@ function ManualSave.nextCopyName(baseSlot, saves)
     return base
 end
 
+-- Returns the first available name in the sequence:
+--   base, base (1), base (2), ...
+-- Used when pre-filling the SaveScreen name field with a sensible default the
+-- user can either accept or overwrite. Pattern matches the "Save / Save (1)"
+-- convention common in many save dialogs (and distinct from nextCopyName
+-- which uses _copy / _copy_(N) for duplicate operations).
+---@param base string
+---@param saves table
+---@return string
+function ManualSave.nextAvailableName(base, saves)
+    if not base or base == "" then base = "Save" end
+    local taken = {}
+    for _, s in ipairs(saves) do taken[s.slot] = true end
+    if not taken[base] then return base end
+    local n = 1
+    repeat
+        local c = base .. " (" .. n .. ")"
+        if not taken[c] then return c end
+        n = n + 1
+    until n > 999
+    return base
+end
+
 -- Safe wrapper around getText. Returns the raw key string (never nil) if the
 -- key is missing from the current language, and logs a warning so missing
 -- translations are visible in console.txt.
@@ -59,6 +82,42 @@ end
 function ManualSave.textBtnW(label, minW)
     local tw = getTextManager():MeasureStringX(UIFont.Small, label or "")
     return math.max(minW or 0, tw + 24)
+end
+
+-- Word-wraps `text` to fit within `maxW` pixels for `font`, honouring explicit
+-- \n breaks. Returns a list of visual lines (always at least one entry). A
+-- single word longer than maxW is left on its own line (the caller clips).
+-- Shared toolkit helper so every text widget wraps consistently.
+---@param text string
+---@param font any      UIFont.*
+---@param maxW number   available width in pixels
+---@return string[]
+function ManualSave.wrapText(text, font, maxW)
+    if text == nil then return { "" } end
+    text = tostring(text)
+    local tm = getTextManager()
+    local out = {}
+    for paragraph in (text .. "\n"):gmatch("([^\n]*)\n") do
+        if paragraph == "" then
+            table.insert(out, "")
+        elseif maxW <= 0 or tm:MeasureStringX(font, paragraph) <= maxW then
+            table.insert(out, paragraph)
+        else
+            local line = ""
+            for word in (paragraph .. " "):gmatch("([^ ]+) ") do
+                local try = (line == "") and word or (line .. " " .. word)
+                if tm:MeasureStringX(font, try) <= maxW then
+                    line = try
+                else
+                    if line ~= "" then table.insert(out, line) end
+                    line = word
+                end
+            end
+            if line ~= "" then table.insert(out, line) end
+        end
+    end
+    if #out == 0 then out[1] = "" end
+    return out
 end
 
 print("[ManualSaveMod] UI/Base/Config/Utils.lua loaded.")

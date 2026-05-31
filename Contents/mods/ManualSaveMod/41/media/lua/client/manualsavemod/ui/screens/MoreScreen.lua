@@ -25,12 +25,14 @@ function ManualSave.openMoreScreen()
     _coverObj = ManualSave.makeCoverPanel(ls._p, {
         x=0, y=dims.titleH, w=dims.w, h=contentH,
         bg={ r=TH.BG_R, g=TH.BG_G, b=TH.BG_B, a=1 }, border=false,
+        -- Only widgets OUTSIDE the cover area need to be listed here: anything
+        -- spatially inside the cover (save list, toolbar, search, detail panel,
+        -- action buttons) is auto-hidden by makeCoverPanel via geometry check.
+        -- The Load button lives in the footer (below the cover) and must be
+        -- hidden explicitly because we do not want it triggered while inside
+        -- MoreScreen.
         hideTargets = {
-            ls._detailPanel,
-            ls._btnLoad  and ls._btnLoad.btn,
-            ls._actBtns  and ls._actBtns.rename.btn,
-            ls._actBtns  and ls._actBtns.clone.btn,
-            ls._actBtns  and ls._actBtns.delete.btn,
+            ls._btnLoad and ls._btnLoad.btn,
         },
         update = function(_)
             local bat = ManualSave.SignalBus.isBatAlive()

@@ -4,7 +4,7 @@
 --
 -- Full Save: exits to main menu for a complete save (optionally re-enters).
 -- Quick Save: instant copy without exiting the game.
----@diagnostic disable: undefined-global, undefined-doc-name, inject-field
+---@diagnostic disable: undefined-global, undefined-doc-name, inject-field, undefined-field
 
 ManualSave = ManualSave or {}
 
@@ -15,7 +15,11 @@ local _screen = nil  -- open instance; nil when closed
 function ManualSave._saveScreenOpen() return _screen ~= nil end
 
 -- Opens the save screen. No-op if already open.
-function ManualSave.openSaveScreen()
+-- joypadData is forwarded to the floating panel's open() so the right joypad
+-- focus is transferred (caller is responsible for fetching it via
+-- JoypadState.getMainMenuJoypad() BEFORE closing the pause menu, since
+-- getMainMenuJoypad returns nil once the pause menu is closed).
+function ManualSave.openSaveScreen(joypadData)
     if _screen then return end
 
     local TH = ManualSave.Theme
@@ -63,13 +67,21 @@ function ManualSave.openSaveScreen()
         r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B,
     })
 
-    -- Name input
+    -- Name input. Pre-filled with the user's configured default name (or
+    -- "Save" if blank), auto-incremented to the next free slot — Save,
+    -- Save (1), Save (2), ... — so the user can just press Confirm without
+    -- having to type anything.
+    local defaultBase  = ManualSave.Config.get("SAVE_NAME_DEFAULT")
+    if not defaultBase or defaultBase == "" then defaultBase = "Save" end
+    local existingSaves = ManualSave.SaveManager.listSaves() or {}
+    local presetName    = ManualSave.nextAvailableName(defaultBase, existingSaves)
     local nameInput = ManualSave.makeTextInput(p, {
         x           = TH.PAD,
         y           = y0 + TH.FONT_HGT_SMALL + TH.GAP,
         w           = W - TH.PAD * 2,
         h           = TH.BUTTON_HGT,
         placeholder = getText("UI_MSM_Save_Placeholder"),
+        value       = presetName,
     })
 
     -- Quick Save toggle + "?" info button
@@ -98,6 +110,17 @@ function ManualSave.openSaveScreen()
         onClick = function() ManualSave.closeSaveScreen() end,
     })
 
+    -- Status message (validation error or bat-offline warning)
+    local statusLabel = ManualSave.makeLabel(p, {
+        x=TH.PAD, y=btnY - TH.FONT_HGT_SMALL - 4, w=W - TH.PAD*2, h=TH.FONT_HGT_SMALL,
+        r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
+    })
+
+    local _batWarn = false
+    local function updateStatusLabel()
+        statusLabel.setText(statusMsg or (_batWarn and getText("UI_MSM_Save_WarnOffline")) or "")
+    end
+
     -- Save button — label stays in sync with isQuick via update
     ManualSave.makeButton(p, {
         x = W - TH.PAD - saveW,
@@ -110,6 +133,7 @@ function ManualSave.openSaveScreen()
             local name = ManualSave.sanitize(nameInput.getValue())
             if name == "" then
                 statusMsg = getText("UI_MSM_Save_ErrNoName")
+                updateStatusLabel()
                 return
             end
             statusMsg = nil
@@ -134,9 +158,8 @@ function ManualSave.openSaveScreen()
     })
 
     -- Warning handle: shown when bat_required group condition is false (BAT offline)
-    local _batWarn = false
     ManualSave.UI.registerElement("bat_required",
-        { setEnabled = function(v) _batWarn = v end }, true)
+        { setEnabled = function(v) _batWarn = v; updateStatusLabel() end }, true)
 
     -- Info button: Quick Save explanation
     local infoSz = 20
@@ -162,22 +185,13 @@ function ManualSave.openSaveScreen()
         },
     })
 
-    -- Status message (validation error or bat-offline warning)
-    ManualSave.makeLabel(p, {
-        x=TH.PAD, y=btnY - TH.FONT_HGT_SMALL - 4, w=W - TH.PAD*2, h=TH.FONT_HGT_SMALL,
-        getText = function()
-            return statusMsg or (_batWarn and getText("UI_MSM_Save_WarnOffline")) or ""
-        end,
-        r=TH.DANGER_R, g=TH.DANGER_G, b=TH.DANGER_B,
-    })
-
     ManualSave.UI.evalConditions()
     if getPlayer() then
         setGameSpeed(0)
         setShowPausedMessage(false)
     end
 
-    d.open()
+    d.open(joypadData)
 end
 
 -- Closes the save screen. Pass keepPaused=true to leave the game paused

@@ -18,14 +18,14 @@ function ManualSave.openEditModsScreen(opts)
 
     local modData = ManualSave.EditMods.buildModList(opts.save)
     ManualSave.EditModsScreen._state = {
-        save        = opts.save,
-        allMods     = modData.allMods,
-        allTags     = modData.allTags,
+        save         = opts.save,
+        allMods      = modData.allMods,
+        allTags      = modData.allTags,
         filteredMods = {},
-        sortMode    = "default",
-        activeTag   = "all",
-        lastSearch  = "",
-        onCreated   = opts.onCreated,
+        sortMode     = "default",
+        activeTag    = "all",
+        lastSearch   = "",
+        onCreated    = opts.onCreated,
     }
 
     local d

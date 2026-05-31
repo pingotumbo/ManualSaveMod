@@ -103,6 +103,129 @@ local function safety_lines()
     }
 end
 
+-- SETTINGS ─────────────────────────────────────────────────────────────────────
+
+local function settings_lines()
+    return {
+        { getText("UI_MSM_Help_Settings_01"), "header"  },
+        { getText("UI_MSM_Help_Settings_02"), "body"    },
+        { "",                                           },
+        { getText("UI_MSM_Help_Settings_03"), "header"  },
+        { getText("UI_MSM_Help_Settings_04"), "sub"     },
+        { getText("UI_MSM_Help_Settings_05"), "body"    },
+        { "",                                           },
+        { getText("UI_MSM_Help_Settings_06"), "sub"     },
+        { getText("UI_MSM_Help_Settings_07"), "body"    },
+        { "",                                           },
+        { getText("UI_MSM_Help_Settings_08"), "sub"     },
+        { getText("UI_MSM_Help_Settings_09"), "body"    },
+        { "",                                           },
+        { getText("UI_MSM_Help_Settings_14"), "sub"     },
+        { getText("UI_MSM_Help_Settings_15"), "body"    },
+        { "",                                           },
+        { getText("UI_MSM_Help_Settings_10"), "sub"     },
+        { getText("UI_MSM_Help_Settings_11"), "body"    },
+        { "",                                           },
+        { getText("UI_MSM_Help_Settings_12"), "header"  },
+        { getText("UI_MSM_Help_Settings_13"), "callout_g"},
+    }
+end
+
+local function general_lines()
+    return {
+        { getText("UI_MSM_Help_General_01"), "header"    },
+        { getText("UI_MSM_Help_General_02"), "body"      },
+        { getText("UI_MSM_Help_General_03"), "dim"       },
+        { "",                                            },
+        { getText("UI_MSM_Help_General_04"), "header"    },
+        { getText("UI_MSM_Help_General_05"), "body"      },
+        { getText("UI_MSM_Help_General_06"), "dim"       },
+        { "",                                            },
+        { getText("UI_MSM_Help_General_07"), "header"    },
+        { getText("UI_MSM_Help_General_08"), "body"      },
+        { getText("UI_MSM_Help_General_09"), "callout_w" },
+        { "",                                            },
+        { getText("UI_MSM_Help_General_10"), "header"    },
+        { getText("UI_MSM_Help_General_11"), "body"      },
+        { getText("UI_MSM_Help_General_12"), "dim"       },
+    }
+end
+
+local function hudpos_lines()
+    return {
+        { getText("UI_MSM_Help_HudPos_01"), "header"   },
+        { getText("UI_MSM_Help_HudPos_02"), "body"     },
+        { "",                                          },
+        { getText("UI_MSM_Help_HudPos_03"), "header"   },
+        { getText("UI_MSM_Help_HudPos_04"), "body"     },
+        { getText("UI_MSM_Help_HudPos_05"), "dim"      },
+        { "",                                          },
+        { getText("UI_MSM_Help_HudPos_06"), "header"   },
+        { getText("UI_MSM_Help_HudPos_07"), "body"     },
+        { "",                                          },
+        { getText("UI_MSM_Help_HudPos_08"), "header"   },
+        { getText("UI_MSM_Help_HudPos_09"), "body"     },
+        { "",                                          },
+        { getText("UI_MSM_Help_HudPos_10"), "header"   },
+        { getText("UI_MSM_Help_HudPos_11"), "body"     },
+        { getText("UI_MSM_Help_HudPos_12"), "dim"      },
+    }
+end
+
+local function backupdir_lines()
+    return {
+        { getText("UI_MSM_Help_BackupDir_01"), "header"    },
+        { getText("UI_MSM_Help_BackupDir_02"), "body"      },
+        { "",                                              },
+        { getText("UI_MSM_Help_BackupDir_03"), "header"    },
+        { getText("UI_MSM_Help_BackupDir_04"), "body"      },
+        { getText("UI_MSM_Help_BackupDir_05"), "dim"       },
+        { "",                                              },
+        { getText("UI_MSM_Help_BackupDir_06"), "header"    },
+        { getText("UI_MSM_Help_BackupDir_07"), "body"      },
+        { "",                                              },
+        { getText("UI_MSM_Help_BackupDir_08"), "header"    },
+        { getText("UI_MSM_Help_BackupDir_09"), "callout_w" },
+        { "",                                              },
+        { getText("UI_MSM_Help_BackupDir_10"), "body"      },
+        { "",                                              },
+        { getText("UI_MSM_Help_BackupDir_11"), "header"    },
+        { getText("UI_MSM_Help_BackupDir_12"), "body"      },
+    }
+end
+
+local function shortcuts_lines()
+    return {
+        { getText("UI_MSM_Help_ShortcutsHlp_01"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_02"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_03"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_04"), "sub"       },
+        { getText("UI_MSM_Help_ShortcutsHlp_05"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_06"), "sub"       },
+        { getText("UI_MSM_Help_ShortcutsHlp_07"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_08"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_09"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_10"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_11"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_12"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_13"), "body"      },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_14"), "header"    },
+        { getText("UI_MSM_Help_ShortcutsHlp_15"), "body"      },
+        { getText("UI_MSM_Help_ShortcutsHlp_16"), "check"     },
+        { getText("UI_MSM_Help_ShortcutsHlp_17"), "check"     },
+        { getText("UI_MSM_Help_ShortcutsHlp_18"), "check"     },
+        { getText("UI_MSM_Help_ShortcutsHlp_19"), "check"     },
+        { "",                                                 },
+        { getText("UI_MSM_Help_ShortcutsHlp_20"), "callout_g" },
+    }
+end
+
 -- WATCHER ──────────────────────────────────────────────────────────────────────
 
 local function watcher_what_lines()
@@ -278,6 +401,15 @@ local function loadscreen_lines()
         { getText("UI_MSM_Help_Loadscreen_11"), "check"    },
         { "",                                              },
         { getText("UI_MSM_Help_Loadscreen_12"), "callout_w"},
+        { "",                                              },
+        { getText("UI_MSM_Help_Loadscreen_13"), "header"   },
+        { getText("UI_MSM_Help_Loadscreen_14"), "body"     },
+        { getText("UI_MSM_Help_Loadscreen_15"), "check"    },
+        { getText("UI_MSM_Help_Loadscreen_16"), "check"    },
+        { getText("UI_MSM_Help_Loadscreen_17"), "check"    },
+        { getText("UI_MSM_Help_Loadscreen_18"), "check"    },
+        { "",                                              },
+        { getText("UI_MSM_Help_Loadscreen_19"), "dim"      },
     }
 end
 
@@ -437,6 +569,26 @@ local function editmods_lines()
     }
 end
 
+-- SAVE IN PROGRESS ────────────────────────────────────────────────────────────
+
+local function savebusy_lines()
+    return {
+        { getText("UI_MSM_Help_SaveBusy_01"), "header"    },
+        { getText("UI_MSM_Help_SaveBusy_02"), "body"      },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_03"), "body"      },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_04"), "header"    },
+        { getText("UI_MSM_Help_SaveBusy_05"), "callout_w" },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_06"), "header"    },
+        { getText("UI_MSM_Help_SaveBusy_07"), "check"     },
+        { getText("UI_MSM_Help_SaveBusy_08"), "check"     },
+        { "",                                             },
+        { getText("UI_MSM_Help_SaveBusy_09"), "body"      },
+    }
+end
+
 -- RECOVERY ─────────────────────────────────────────────────────────────────────
 
 local function recovery_lines()
@@ -466,6 +618,28 @@ local function recovery_lines()
         { getText("UI_MSM_Help_Recovery_20"), "header"     },
         { getText("UI_MSM_Help_Recovery_21"), "body"       },
         { getText("UI_MSM_Help_Recovery_22"), "warn"       },
+    }
+end
+
+local function crashbackup_lines()
+    return {
+        { getText("UI_MSM_Help_CrashBackup_01"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_02"), "body"      },
+        { getText("UI_MSM_Help_CrashBackup_03"), "dim"       },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_04"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_05"), "body"      },
+        { getText("UI_MSM_Help_CrashBackup_06"), "callout_g" },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_07"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_08"), "body"      },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_09"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_10"), "body"      },
+        { getText("UI_MSM_Help_CrashBackup_11"), "warn"      },
+        { "",                                                },
+        { getText("UI_MSM_Help_CrashBackup_12"), "header"    },
+        { getText("UI_MSM_Help_CrashBackup_13"), "body"      },
     }
 end
 
@@ -522,12 +696,6 @@ local function limits_lines()
         { getText("UI_MSM_Help_Limits_09"), "header"       },
         { getText("UI_MSM_Help_Limits_10"), "body"         },
         { getText("UI_MSM_Help_Limits_11"), "dim"          },
-        { "",                                              },
-        { getText("UI_MSM_Help_Limits_12"), "header"       },
-        { getText("UI_MSM_Help_Limits_13"), "warn"         },
-        { getText("UI_MSM_Help_Limits_14"), "good"         },
-        { getText("UI_MSM_Help_Limits_15"), "body"         },
-        { getText("UI_MSM_Help_Limits_16"), "dim"          },
         { "",                                              },
         { getText("UI_MSM_Help_Limits_17"), "header"       },
         { getText("UI_MSM_Help_Limits_18"), "body"         },
@@ -630,10 +798,18 @@ local CATEGORIES = {
         { id="watcher",     label=getText("UI_MSM_Help_PageWatcher"),    lines=watcher_what_lines },
         { id="watcher_run", label=getText("UI_MSM_Help_PageWatcherRun"), lines=watcher_run_lines  },
     }},
+    { id="settings", label=getText("UI_MSM_Help_CatSettings"), pages={
+        { id="settings",      label=getText("UI_MSM_Help_PageSettings"),     lines=settings_lines  },
+        { id="general",       label=getText("UI_MSM_Help_PageGeneral"),      lines=general_lines   },
+        { id="hudpos",        label=getText("UI_MSM_Help_PageHudPos"),       lines=hudpos_lines    },
+        { id="backupdir",     label=getText("UI_MSM_Help_PageBackupDir"),    lines=backupdir_lines },
+        { id="shortcuts_hlp", label=getText("UI_MSM_Help_PageShortcutsHlp"), lines=shortcuts_lines },
+    }},
     { id="save",     label=getText("UI_MSM_Help_CatSave"),     pages={
         { id="quicksave",   label=getText("UI_MSM_Help_PageQuicksave"),  lines=quicksave_lines   },
         { id="fullsave",    label=getText("UI_MSM_Help_PageFullsave"),   lines=fullsave_lines    },
         { id="thumbnail",   label=getText("UI_MSM_Help_PageThumbnail"),  lines=thumbnail_lines   },
+        { id="savebusy",    label=getText("UI_MSM_Help_PageSaveBusy"),   lines=savebusy_lines    },
     }},
     { id="load",     label=getText("UI_MSM_Help_CatLoad"),     pages={
         { id="loadscreen",  label=getText("UI_MSM_Help_PageLoadscreen"), lines=loadscreen_lines  },
@@ -649,7 +825,8 @@ local CATEGORIES = {
         { id="editmods",    label=getText("UI_MSM_Help_PageEditMods"),   lines=editmods_lines    },
     }},
     { id="recovery", label=getText("UI_MSM_Help_CatRecovery"), pages={
-        { id="recovery",    label=getText("UI_MSM_Help_PageRecovery"),   lines=recovery_lines    },
+        { id="recovery",    label=getText("UI_MSM_Help_PageRecovery"),    lines=recovery_lines     },
+        { id="crashbackup", label=getText("UI_MSM_Help_PageCrashBackup"), lines=crashbackup_lines  },
     }},
     { id="trouble",  label=getText("UI_MSM_Help_CatTrouble"),  pages={
         { id="trouble",     label=getText("UI_MSM_Help_PageTrouble"),    lines=trouble_lines     },
@@ -700,7 +877,7 @@ end
 
 -- ── UI builder ─────────────────────────────────────────────────────────────────
 
-function ManualSave.openHelpScreen(section)
+function ManualSave.openHelpScreen(section, joypadData)
     if section then _section = section end
     if _screen then
         if section then
@@ -710,20 +887,15 @@ function ManualSave.openHelpScreen(section)
         _screen.panel:bringToTop()
         return
     end
+    if not joypadData and JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
+    end
 
     local d  = ManualSave.makeFloatingPanel({
         w=W, h=H, title=getText("UI_MSM_Help_Title"),
-        subtitle = navSubtitle(),
-        noBorder = true,
-        onClose  = function() ManualSave.closeHelpScreen() end,
-        render   = function(self2)
-            local TH2 = ManualSave.Theme
-            local bw  = 2
-            self2:drawRect(0, 0, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-            self2:drawRect(0, self2.height-bw, self2.width, bw, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-            self2:drawRect(0, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-            self2:drawRect(self2.width-bw, 0, bw, self2.height, 1, TH2.ACCENT_R, TH2.ACCENT_G, TH2.ACCENT_B)
-        end,
+        subtitle    = navSubtitle(),
+        borderStyle = "accent",   -- solid 2px accent border (HelpScreen visual identity)
+        onClose     = function() ManualSave.closeHelpScreen() end,
     })
     _screen  = d
     local cy = d.titleH
@@ -751,7 +923,7 @@ function ManualSave.openHelpScreen(section)
         getLines = activeLines,
     })
 
-    d.open()
+    d.open(joypadData)
 end
 
 function ManualSave.closeHelpScreen()

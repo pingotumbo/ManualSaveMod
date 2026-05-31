@@ -145,17 +145,27 @@ end
 function ManualSave.MetaCache.collectLiveData(saveType)
     local d = { TYPE = saveType or "FULL", DATE = os.date("%d %b %Y %H:%M") }
 
+    -- MAP name comes from getSaveInfo(world). The mod list is read directly
+    -- from the live game state via getActivatedMods() — the same source
+    -- EditMods uses — because info.activeMods in recent PZ builds can return
+    -- an empty/unbuilt structure during the save flow, causing 0-mod metas.
     pcall(function()
         local info = getSaveInfo(getWorld():getWorld())
         if info and info.mapName then d.MAP = info.mapName end
-        if info and info.activeMods then
-            local nameList, idList = {}, {}
-            for i = 1, info.activeMods:getMods():size() do
-                local id = info.activeMods:getMods():get(i - 1)
+    end)
+    pcall(function()
+        local active = getActivatedMods()
+        if not active or active:size() == 0 then return end
+        local nameList, idList = {}, {}
+        for i = 0, active:size() - 1 do
+            local id = active:get(i)
+            if type(id) == "string" and id ~= "" then
                 local mi = getModInfoByID(id)
                 table.insert(nameList, mi and mi:getName() or id)
                 table.insert(idList, id)
             end
+        end
+        if #idList > 0 then
             d.MODS    = table.concat(nameList, ", ")
             d.MOD_IDS = table.concat(idList,   ", ")
         end

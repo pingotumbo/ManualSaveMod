@@ -64,14 +64,8 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
         local st = ManualSave.LoadScreen._state
         if not st or not st.selected then return end
         local m = st.selected
-        ManualSave.openConfirmDialog({
-            title       = getText("UI_MSM_Detail_DeleteConfirm"),
-            body        = getText("UI_MSM_Detail_DeleteBody", "\"" .. truncate(slotDisplay(m.slot or ""), 22) .. "\""),
-            confirm     = getText("UI_MSM_Detail_BtnDelete"),
-            danger      = true,
-            helpSection = "delete",
-            onConfirm = function()
-                ManualSave.SaveManager.delete(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot,
+        local function execDelete()
+            ManualSave.SaveManager.delete(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot,
                     function(status)
                         if status ~= "OK" then return end
                         for i, b in ipairs(st.saves) do
@@ -90,8 +84,19 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
                         end
                         ManualSave.LoadScreen.applyFilter()
                     end)
-            end,
-        })
+        end
+        if ManualSave.Config.get("CONFIRM_DELETE") == "0" then
+            execDelete()
+        else
+            ManualSave.openConfirmDialog({
+                title       = getText("UI_MSM_Detail_DeleteConfirm"),
+                body        = getText("UI_MSM_Detail_DeleteBody", "\"" .. truncate(slotDisplay(m.slot or ""), 22) .. "\""),
+                confirm     = getText("UI_MSM_Detail_BtnDelete"),
+                danger      = true,
+                helpSection = "delete",
+                onConfirm   = execDelete,
+            })
+        end
     end
 
     local function doClone()
@@ -190,6 +195,8 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
 
     ManualSave.LoadScreen._beginRename  = beginRenameInline
     ManualSave.LoadScreen._commitRename = commitRename
+    ManualSave.LoadScreen._doDelete     = doDelete
+    ManualSave.LoadScreen._doClone      = doClone
 end
 
 print("[ManualSaveMod] UI/Base/Widgets/Sections/SaveDetailPanel.lua loaded.")

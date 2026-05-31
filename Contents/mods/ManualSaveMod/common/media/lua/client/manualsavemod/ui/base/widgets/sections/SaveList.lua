@@ -232,7 +232,8 @@ function ManualSave.makeSaveList(parent, opts)
         rowH=TH.ITEM_HGT, items={},
         bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
         drawRow    = drawRow,
-        onSelect   = function(item) selectItem(item) end,
+        onSelect   = function(item) selectItem(item) end,  -- mouse click
+        onNavigate = function(item) selectItem(item) end,  -- arrow keys (also update detail)
         onActivate = function(item)
             selectItem(item)
             local st = ManualSave.LoadScreen._state

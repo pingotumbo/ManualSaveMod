@@ -119,7 +119,8 @@ function ManualSave.makeSaveList(parent, opts)
         st.fadealpha     = 0
         st.selectedThumb = nil
         pcall(function()
-            local tex = getTextureFromSaveDir(item.slot .. ".png", "ManualSave_Thumbs")
+            local thumbFile = item.THUMB_FILE or (item.slot .. ".png")
+            local tex = getTextureFromSaveDir(thumbFile, "ManualSave_Thumbs")
                      or getTextureFromSaveDir("thumb.png", "MSM_THUMB_" .. item.slot)
             st.selectedThumb = tex
         end)
@@ -231,7 +232,8 @@ function ManualSave.makeSaveList(parent, opts)
         rowH=TH.ITEM_HGT, items={},
         bg={ r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
         drawRow    = drawRow,
-        onSelect   = function(item) selectItem(item) end,
+        onSelect   = function(item) selectItem(item) end,  -- mouse click
+        onNavigate = function(item) selectItem(item) end,  -- arrow keys (also update detail)
         onActivate = function(item)
             selectItem(item)
             local st = ManualSave.LoadScreen._state

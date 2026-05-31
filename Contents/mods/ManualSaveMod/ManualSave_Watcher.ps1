@@ -56,7 +56,30 @@ $SIGNAL        = "$LuaDir\ManualSave_Signal.txt"
 $INDEX         = "$LuaDir\ManualSave_Index.txt"
 $DONE          = "$LuaDir\ManualSave_Done.txt"
 $SAVES         = "$ZomboidRoot\Saves"
+
+# Honour the user-configurable backup folder set in Settings > Paths
+# (Config key BACKUP_DIR, persisted by the Lua side in ManualSave_Config.txt).
+# If unset or invalid we fall back to the default <Zomboid>\ManualSaves.
 $BACKUPS       = "$ZomboidRoot\ManualSaves"
+$_cfgFile      = "$LuaDir\ManualSave_Config.txt"
+if (Test-Path $_cfgFile) {
+    $_backupLine = Get-Content $_cfgFile -EA SilentlyContinue |
+        Where-Object { $_ -match '^\s*BACKUP_DIR\s*=' } |
+        Select-Object -First 1
+    if ($_backupLine) {
+        $_backupVal = ($_backupLine -replace '^\s*BACKUP_DIR\s*=\s*', '').Trim()
+        if ($_backupVal -ne '') {
+            $_backupExpanded = [System.Environment]::ExpandEnvironmentVariables($_backupVal)
+            if (Test-Path $_backupExpanded) {
+                $BACKUPS = $_backupExpanded
+                Write-Host "[ManualSave_Watcher] Backups: $BACKUPS  (from Settings > Paths)"
+            } else {
+                Write-Host "[ManualSave_Watcher] Configured BACKUP_DIR not found, using default: $BACKUPS"
+                Write-Host "  configured: $_backupExpanded"
+            }
+        }
+    }
+}
 $THUMBS        = "$ZomboidRoot\Saves\ManualSave_Thumbs"
 $SCREEN_REQ    = "$LuaDir\ManualSave_ScreenReq.txt"
 $SCREEN_DONE   = "$LuaDir\ManualSave_ScreenDone.txt"
@@ -93,12 +116,23 @@ public class MSM_Win {
 "@
 [MSM_Win]::SetProcessDPIAware() | Out-Null
 
-# Clean stale lock from a previous crash (only if the recorded PID is no longer running)
+# Helper: a PID is "the watcher still running" only when there's a process AND
+# it is actually PowerShell. Without the name check we'd trust any process that
+# happens to have inherited the recycled PID after a crash (we have hit Steam's
+# steamwebhelper.exe taking the slot, which kept us out of the lock forever).
+function Test-WatcherAlive($pidVal) {
+    if (-not $pidVal) { return $false }
+    $proc = Get-Process -Id $pidVal -EA SilentlyContinue
+    if (-not $proc) { return $false }
+    return ($proc.ProcessName -in @('powershell','pwsh'))
+}
+
+# Clean stale lock from a previous crash (only if the recorded PID is no longer
+# our PowerShell process).
 if (Test-Path $LOCK_FILE) {
     $stalePid = $null
     try { $stalePid = [int](Get-Content $LOCK_FILE -Raw -EA Stop) } catch {}
-    $staleAlive = $stalePid -and (Get-Process -Id $stalePid -EA SilentlyContinue)
-    if (-not $staleAlive) { Remove-Item $LOCK_FILE -Force -EA SilentlyContinue }
+    if (-not (Test-WatcherAlive $stalePid)) { Remove-Item $LOCK_FILE -Force -EA SilentlyContinue }
 }
 
 # Lock file — prevent multiple watcher instances.
@@ -112,15 +146,30 @@ try {
 } catch {
     $existingPid = $null
     try { $existingPid = [int](Get-Content $LOCK_FILE -Raw -EA Stop) } catch {}
-    if ($existingPid -and (Get-Process -Id $existingPid -EA SilentlyContinue)) {
+    if (Test-WatcherAlive $existingPid) {
         Write-Host "[ManualSave_Watcher] Already running (PID $existingPid) - raising window..."
         try { (New-Object -ComObject WScript.Shell).AppActivate($existingPid) | Out-Null } catch {}
     } else {
-        Write-Host "[ManualSave_Watcher] Lock conflict (stale file). Delete manually if this repeats:"
-        Write-Host "  $LOCK_FILE"
+        Write-Host "[ManualSave_Watcher] Stale lock detected (PID $existingPid is not a PowerShell process). Removing and continuing."
+        Remove-Item $LOCK_FILE -Force -EA SilentlyContinue
+        Start-Sleep -Milliseconds 200
+        # Retry the open after clearing the stale lock so the user does not have
+        # to relaunch the .cmd by hand.
+        try {
+            $lockStream = [System.IO.File]::Open($LOCK_FILE, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)
+            $lockWriter = New-Object System.IO.StreamWriter($lockStream)
+            $lockWriter.Write($PID.ToString())
+            $lockWriter.Flush()
+        } catch {
+            Write-Host "[ManualSave_Watcher] Could not acquire lock even after clearing. Exiting."
+            Start-Sleep -Seconds 3
+            exit 0
+        }
     }
-    Start-Sleep -Seconds 3
-    exit 0
+    if (-not $lockStream) {
+        Start-Sleep -Seconds 3
+        exit 0
+    }
 }
 
 $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
@@ -423,9 +472,22 @@ function Invoke-Screenshot($outputPath) {
 while ($true) {
     Start-Sleep -Milliseconds 100
     $HB++
-    $HB_TMP = "$HEARTBEAT.tmp"
-    [System.IO.File]::WriteAllText($HB_TMP, [string]$HB)
-    Move-Item $HB_TMP $HEARTBEAT -Force
+    # Write the heartbeat with FileShare.Read explicitly so PZ's getFileReader
+    # (called every ~120 ticks on the Lua side) can always open the file even
+    # if we are mid-write. Without this, Windows raises ERROR_SHARING_VIOLATION
+    # and the Lua side logs a SEVERE FileNotFoundException in console.txt.
+    try {
+        $hbStream = [System.IO.File]::Open($HEARTBEAT,
+            [System.IO.FileMode]::Create,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::Read)
+        $hbBytes = [System.Text.Encoding]::ASCII.GetBytes(([string]$HB) + "`r`n")
+        $hbStream.Write($hbBytes, 0, $hbBytes.Length)
+        $hbStream.Close()
+    } catch {
+        # If a read locked us out for this single tick, just skip; the next
+        # iteration will write again.
+    }
 
     # Screenshot request (highest priority)
     if (Test-Path $SCREEN_REQ) {

@@ -122,6 +122,11 @@ function ManualSave.makePopupPanel(opts)
         return true
     end
 
+    -- InputNav: auto-create a focus manager + group for this popup.
+    if ManualSave.InputNav and ManualSave.InputNav.installPanelNav then
+        ManualSave.InputNav.installPanelNav(p, obj, { id="popup" })
+    end
+
     if opts.onClose then obj.onClose(opts.onClose) end
 
     return obj

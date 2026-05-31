@@ -81,9 +81,12 @@ end
 
 -- ── Screen ────────────────────────────────────────────────────────────────────
 
-function ManualSave.openImportScreen()
+function ManualSave.openImportScreen(joypadData)
     if _screen then _screen.panel:bringToTop(); return end
     if _importing then return end
+    if not joypadData and JoypadState and JoypadState.getMainMenuJoypad then
+        joypadData = JoypadState.getMainMenuJoypad()
+    end
 
     local TH   = ManualSave.Theme
     local PAD  = TH.PAD
@@ -231,9 +234,16 @@ function ManualSave.openImportScreen()
         rowH     = ITEM_ROW_H,
         items    = displayed,
         bg       = { r=TH.PANEL_R, g=TH.PANEL_G, b=TH.PANEL_B },
-        drawRow  = function(panel, item, rx, ry, rw, rh, _, _)
+        drawRow  = function(panel, item, rx, ry, rw, rh, isSelected, _)
             if item.checked then
                 panel:drawRect(rx, ry, rw, rh, 0.10, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
+            end
+            -- Keyboard / gamepad cursor highlight on the focused row. Matches
+            -- ModScrollList / SettingsNav patterns so the user sees which row
+            -- A / Enter will toggle.
+            if isSelected and ManualSave.InputNav and ManualSave.InputNav.keyboardActive then
+                panel:drawRect(rx, ry, rw, rh,
+                    TH.FOCUS_BG_A, TH.FOCUS_BG_R, TH.FOCUS_BG_G, TH.FOCUS_BG_B)
             end
             ManualSave.Draw.separator(panel, rx, ry + rh - 1, rw, 0.12)
 
@@ -271,6 +281,13 @@ function ManualSave.openImportScreen()
             end
         end,
         onSelect = function(item, _)
+            item.checked = not item.checked
+            rebuild()
+        end,
+        -- Enter (or A on joypad): same toggle as mouse click. The scroll list
+        -- preserves the cursor index across setItems(t, true) inside rebuild()
+        -- so the user can toggle multiple rows in a row without losing focus.
+        onActivate = function(item, _)
             item.checked = not item.checked
             rebuild()
         end,
@@ -361,9 +378,28 @@ function ManualSave.openImportScreen()
             if not ManualSave.ImportScreen.writeQueueFile(allFlat) then
                 phase = "error"; errMsg = getText("UI_MSM_Import_ErrQueueFile"); return
             end
+            local progressPanel = ManualSave.openProgressPanel and
+                ManualSave.openProgressPanel({ label = getText("UI_MSM_Import_BtnImport") }) or nil
             _importing = true; _screen = nil; d.close()
             ManualSave.SignalBus.send("IMPORT", nil, function(status)
                 _importing = false
+                if progressPanel then
+                    if status == "OK" then
+                        pcall(progressPanel.showDone)
+                        local t = 0
+                        local closeH
+                        closeH = function()
+                            t = t + 1
+                            if t >= 60 then
+                                Events.OnRenderTick.Remove(closeH)
+                                pcall(progressPanel.close)
+                            end
+                        end
+                        Events.OnRenderTick.Add(closeH)
+                    else
+                        pcall(progressPanel.close)
+                    end
+                end
                 if status == "OK" then
                     for _, e in ipairs(allFlat) do
                         if e.checked then
@@ -389,7 +425,7 @@ function ManualSave.openImportScreen()
         rebuild()
     end, 3600)
 
-    d.open()
+    d.open(joypadData)
 end
 
 function ManualSave.closeImportScreen()

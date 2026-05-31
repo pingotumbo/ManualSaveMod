@@ -34,6 +34,12 @@ ManualSave.Theme = {
     -- Warning (amber) — used for missing mods and caution states
     WARN_R   = 0.92,  WARN_G   = 0.78,  WARN_B   = 0.22,
 
+    -- Focus (keyboard / gamepad navigation highlight) — accent-derived, brighter
+    FOCUS_R     = 1.00, FOCUS_G     = 0.62, FOCUS_B     = 0.30,  -- focus border
+    FOCUS_BG_R  = 0.30, FOCUS_BG_G  = 0.16, FOCUS_BG_B  = 0.08,  -- subtle background tint
+    FOCUS_BG_A  = 0.55,                                          -- focus background alpha
+    FOCUS_BW    = 2,                                             -- focus border thickness
+
     -- ── Overlay ───────────────────────────────────────────────────────────────
 
     OVERLAY_A      = 0.72,  -- alpha for modal blocking overlay
