@@ -1,0 +1,3 @@
+# Edit this path if your Zomboid folder is somewhere other than the default.
+# Default on Linux / Steam Deck / macOS: ~/Zomboid
+~/Zomboid

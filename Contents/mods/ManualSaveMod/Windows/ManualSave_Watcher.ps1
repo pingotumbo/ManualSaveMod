@@ -7,7 +7,16 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 
+# Migration safety net (v1.5.4 layout change):
+# Pre-v1.5.4 the watcher and ManualSave_UserDir.txt lived in the mod root.
+# From v1.5.4 they live inside Windows/. If an old root-level file survives
+# (manual install / DEV folder), copy its contents over the freshly shipped
+# default so a user with a customised Zomboid path doesn't lose it on update.
+$_legacyUserDir = Join-Path $PSScriptRoot "..\ManualSave_UserDir.txt"
 $_userDirConfig = Join-Path $PSScriptRoot "ManualSave_UserDir.txt"
+if ((Test-Path $_legacyUserDir) -and (-not (Test-Path $_userDirConfig))) {
+    Copy-Item $_legacyUserDir $_userDirConfig -Force
+}
 
 function Read-ZomboidPath {
     param([string]$current)

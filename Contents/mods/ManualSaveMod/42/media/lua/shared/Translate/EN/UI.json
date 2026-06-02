@@ -305,7 +305,7 @@
   "UI_MSM_Help_Watcher_10": "No install, no service, no autostart.\nIf you don't start the .cmd the mod is inert.\nThis keeps the install trivially reversible.",
   "UI_MSM_Help_Watcher_GifCaption": "This is what the Watcher looks like while it works. Each line is one signal received from PZ.",
   "UI_MSM_Help_WatcherRun_01": "STARTING IT MANUALLY",
-  "UI_MSM_Help_WatcherRun_02": "Double-click ManualSave_Watcher.cmd.\nA PowerShell window opens - leave it running.\nThe Watcher is now running in the background.",
+  "UI_MSM_Help_WatcherRun_02": "Open the folder for your operating system inside the mod folder (Windows, Linux, or MacOS) and double-click the launcher inside:\n- Windows: ManualSave_Watcher.cmd\n- Linux / Steam Deck / macOS: ManualSave_Watcher.sh\nA terminal window opens - leave it running. The Watcher is now in the background.",
   "UI_MSM_Help_WatcherRun_03": "WHERE THE FILE IS",
   "UI_MSM_Help_WatcherRun_04": "In the mod folder. To open it:\nPZ main menu > Mods > Manual Save Mod > Open Folder",
   "UI_MSM_Help_WatcherRun_05": "ManualSave_Watcher.cmd   (launcher)",
