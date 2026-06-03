@@ -149,6 +149,17 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
         hasContent = function()
             local st = ManualSave.LoadScreen._state; return st and st.selected ~= nil
         end,
+        zoomable = true,
+        zoomCaption = function()
+            local st = ManualSave.LoadScreen._state
+            local sel = st and st.selected
+            if not sel then return "" end
+            -- st.selected is the slot record (a table); pick a printable label.
+            if type(sel) == "table" then
+                return sel.slot or sel.name or sel.title or ""
+            end
+            return tostring(sel)
+        end,
     })
 
     ManualSave.LoadScreen._detailPanel = ManualSave.makeSaveDetailView(parent, {

@@ -3,9 +3,12 @@
 # ManualSave_Watcher.py  (Linux / Steam Deck / macOS)
 # Python port of Windows/ManualSave_Watcher.ps1
 # =============================================================================
-# Phase 2b: foundation. The lock, heartbeat, signal poll, dispatcher and exit
-# cleanup are real. The 11 game operations (SAVE, LOAD, etc.) are stubbed and
-# reply STATUS=NOT_IMPLEMENTED until Phase 2d ports them one by one.
+# All eleven game operations (SAVE, LOAD, SESSION_END, DELETE, RENAME, CLONE,
+# CLONE_MODS, RENAME_WORLD, EXPORT_VANILLA, SCAN_VANILLA, IMPORT) plus crash
+# recovery, heartbeat, signal protocol and exit cleanup are implemented in
+# stdlib Python. Screenshot capture is NOT performed on these platforms: the
+# Lua side falls back to its built-in "no thumbnail" tile and the Settings UI
+# explains why.
 # =============================================================================
 
 import os
@@ -14,29 +17,31 @@ import sys
 import time
 import shutil
 import signal
+import atexit
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Paths relative to this script (Linux/ or MacOS/ sibling of the mod root).
+# Script-relative constants. Linux/ and MacOS/ are sibling folders of the mod
+# root, both shipping an identical copy of this file.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR         = Path(__file__).resolve().parent
 MOD_ROOT           = SCRIPT_DIR.parent
 USERDIR_TXT        = SCRIPT_DIR / "ManualSave_UserDir.txt"
-LEGACY_USERDIR_TXT = MOD_ROOT  / "ManualSave_UserDir.txt"   # pre-v1.5.4 fallback
+LEGACY_USERDIR_TXT = MOD_ROOT  / "ManualSave_UserDir.txt"   # pre-v1.6.0 fallback
 PLACEHOLDER_DIR    = MOD_ROOT  / "placeholders"
 
 # ---------------------------------------------------------------------------
-# Logging helper (writes both to stdout and to a small log on disk later).
+# Logging.
 # ---------------------------------------------------------------------------
 def log(msg: str) -> None:
     print(f"[ManualSave_Watcher] {msg}", flush=True)
 
 # ---------------------------------------------------------------------------
-# Migration safety net (v1.5.4 layout change).
-# Pre-v1.5.4 the watcher and ManualSave_UserDir.txt lived in the mod root.
-# From v1.5.4 they live inside Linux/ or MacOS/. If an old root-level file
+# Migration safety net (v1.6.0 layout change).
+# Pre-v1.6.0 the watcher and ManualSave_UserDir.txt lived in the mod root.
+# From v1.6.0 they live inside Linux/ or MacOS/. If an old root-level file
 # survives, copy its contents over the freshly shipped default so a user with
 # a customised Zomboid path doesn't lose it on update.
 # ---------------------------------------------------------------------------
@@ -46,6 +51,9 @@ if LEGACY_USERDIR_TXT.exists() and not USERDIR_TXT.exists():
     except OSError:
         pass
 
+# ---------------------------------------------------------------------------
+# UserDir config helpers.
+# ---------------------------------------------------------------------------
 def expand_env(s: str) -> str:
     """Expand $VAR / ${VAR} / ~ / %VAR% so users can write either Unix or
     Windows-style env references in ManualSave_UserDir.txt without surprises."""
@@ -54,7 +62,7 @@ def expand_env(s: str) -> str:
     s = os.path.expanduser(s)
     return s
 
-def read_userdir_config():
+def read_userdir_config() -> str:
     """First non-comment, non-empty line of ManualSave_UserDir.txt, expanded."""
     if not USERDIR_TXT.exists():
         return ""
@@ -129,7 +137,7 @@ else:
 ZomboidRoot = str(Path(ZomboidRoot))
 
 # ---------------------------------------------------------------------------
-# Derived constants (mirror the .ps1 names so the protocol is identical).
+# Derived constants (mirror the .ps1 names so the on-disk protocol is the same).
 # ---------------------------------------------------------------------------
 LuaDir         = Path(ZomboidRoot) / "Lua"
 SIGNAL         = LuaDir / "ManualSave_Signal.txt"
@@ -137,8 +145,7 @@ INDEX          = LuaDir / "ManualSave_Index.txt"
 DONE           = LuaDir / "ManualSave_Done.txt"
 SAVES          = Path(ZomboidRoot) / "Saves"
 
-# Honour the user-configurable backup folder set in Settings > Paths
-# (Config key BACKUP_DIR, persisted by the Lua side in ManualSave_Config.txt).
+# Honour the user-configurable backup folder set in Settings > Paths.
 BACKUPS        = Path(ZomboidRoot) / "ManualSaves"
 _cfg_file      = LuaDir / "ManualSave_Config.txt"
 if _cfg_file.exists():
@@ -161,7 +168,6 @@ if _cfg_file.exists():
 THUMBS         = SAVES / "ManualSave_Thumbs"
 SCREEN_REQ     = LuaDir / "ManualSave_ScreenReq.txt"
 SCREEN_DONE    = LuaDir / "ManualSave_ScreenDone.txt"
-SCREEN_LOG     = LuaDir / "ManualSave_ScreenLog.txt"
 THUMB_PENDING  = LuaDir / "ManualSave_ThumbPending.png"
 LOCK_FILE      = LuaDir / "ManualSave_Watcher.lock"
 HEARTBEAT      = LuaDir / "ManualSave_Heartbeat.txt"
@@ -172,6 +178,67 @@ BACKUPS.mkdir(parents=True, exist_ok=True)
 THUMBS.mkdir(parents=True, exist_ok=True)
 if not INDEX.exists():
     INDEX.write_text("", encoding="utf-8")
+
+# Advertise the host OS to the Lua side so the Settings screen can gate the
+# screenshot option (only the Windows .ps1 can capture the game window).
+# Values: "windows", "linux", "darwin". The .ps1 writes "windows" itself.
+_os_token = "linux" if sys.platform.startswith("linux") else ("darwin" if sys.platform == "darwin" else sys.platform)
+try:
+    (LuaDir / "ManualSave_OS.txt").write_text(_os_token + "\n", encoding="utf-8")
+except OSError:
+    pass
+
+# ---------------------------------------------------------------------------
+# Shared helpers. Kept above crash recovery and the op handlers so anything
+# the boot sequence runs can use them without ordering surprises.
+# ---------------------------------------------------------------------------
+def safe_name(s: str) -> str:
+    """Meta-file path component: spaces become underscores (mirrors the .ps1)."""
+    return s.replace(" ", "_")
+
+def safe_unlink(path: Path) -> None:
+    """Best-effort file removal — swallow OSError so callers stay terse."""
+    try: path.unlink()
+    except OSError: pass
+
+def prune_empty(path: Path) -> None:
+    """Remove path if it is an empty directory. Used to keep the backup tree
+    tidy after the last slot under a world (or last world under a gmode) goes."""
+    if path.is_dir() and not any(path.iterdir()):
+        try: path.rmdir()
+        except OSError: pass
+
+def slot_backup_dir(gmode: str, world: str, slot: str) -> Path:
+    return BACKUPS / gmode / world / slot
+
+def world_backup_dir(gmode: str, world: str) -> Path:
+    return BACKUPS / gmode / world
+
+def gmode_backup_dir(gmode: str) -> Path:
+    return BACKUPS / gmode
+
+def vanilla_save_dir(gmode: str, name: str) -> Path:
+    """SAVES/<gmode>/<name>. Used both for the mod's vanilla mirror (name=slot)
+    and for SCAN/IMPORT iteration (name=world)."""
+    return SAVES / gmode / name
+
+def gmode_vanilla_dir(gmode: str) -> Path:
+    return SAVES / gmode
+
+def slot_meta_file(gmode: str, world: str, slot: str) -> Path:
+    return LuaDir / f"ManualSaves_Meta_{safe_name(gmode)}_{safe_name(world)}_{safe_name(slot)}.txt"
+
+def slot_thumb_file(slot: str) -> Path:
+    return THUMBS / f"{slot}.png"
+
+def now_save_date_str() -> str:
+    """The 'DATE=' value used in meta files (e.g. '02 Jun 2026 18:45')."""
+    return datetime.now().strftime("%d %b %Y %H:%M")
+
+def session_id_now() -> str:
+    """LOAD session id format matches PowerShell's 'yyyyMMdd_HHmmss_fff'."""
+    now = datetime.now()
+    return now.strftime("%Y%m%d_%H%M%S_") + f"{now.microsecond // 1000:03d}"
 
 # ---------------------------------------------------------------------------
 # Lock file. Same protocol as the .ps1: PID inside, stale lock detection by
@@ -217,44 +284,41 @@ def _read_lock_pid():
     except (OSError, ValueError):
         return None
 
-def _acquire_lock() -> bool:
-    """Returns True if we got the lock. False if another watcher is alive."""
-    # Clean stale lock first.
-    if LOCK_FILE.exists():
-        stale_pid = _read_lock_pid()
-        if not _watcher_alive(stale_pid or 0):
-            try: LOCK_FILE.unlink()
-            except OSError: pass
-    # Atomic create-exclusive.
+def _write_lock_atomic() -> bool:
+    """Create LOCK_FILE exclusively and write our PID. Returns False if the
+    file already exists (caller decides whether to retry or back off)."""
     try:
         fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(str(os.getpid()))
         return True
     except FileExistsError:
-        existing = _read_lock_pid()
-        if _watcher_alive(existing or 0):
-            log(f"Already running (PID {existing}). Exiting.")
-            return False
-        log(f"Stale lock detected (PID {existing} not a python process). Clearing and retrying.")
-        try: LOCK_FILE.unlink()
-        except OSError: pass
-        time.sleep(0.2)
-        try:
-            fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(str(os.getpid()))
-            return True
-        except OSError:
-            log("Could not acquire lock even after clearing. Exiting.")
-            return False
+        return False
+
+def _acquire_lock() -> bool:
+    """Returns True if we got the lock. False if another watcher is alive."""
+    if LOCK_FILE.exists():
+        stale_pid = _read_lock_pid()
+        if not _watcher_alive(stale_pid or 0):
+            safe_unlink(LOCK_FILE)
+    if _write_lock_atomic():
+        return True
+    existing = _read_lock_pid()
+    if _watcher_alive(existing or 0):
+        log(f"Already running (PID {existing}). Exiting.")
+        return False
+    log(f"Stale lock detected (PID {existing} not a python process). Clearing and retrying.")
+    safe_unlink(LOCK_FILE)
+    time.sleep(0.2)
+    if _write_lock_atomic():
+        return True
+    log("Could not acquire lock even after clearing. Exiting.")
+    return False
 
 def _release_lock() -> None:
     try:
-        if LOCK_FILE.exists():
-            pid_in_lock = _read_lock_pid()
-            if pid_in_lock == os.getpid():
-                LOCK_FILE.unlink()
+        if LOCK_FILE.exists() and _read_lock_pid() == os.getpid():
+            LOCK_FILE.unlink()
     except OSError:
         pass
 
@@ -262,20 +326,17 @@ if not _acquire_lock():
     time.sleep(3)
     sys.exit(0)
 
-# Cleanup hooks: release lock on Ctrl+C / SIGTERM / normal exit.
-def _shutdown_handler(signum, frame):
+def _shutdown_handler(signum, *_):   # noqa: signal handler signature; frame intentionally ignored
     log(f"Received signal {signum}, shutting down.")
     _release_lock()
     sys.exit(0)
 
 signal.signal(signal.SIGINT,  _shutdown_handler)
 signal.signal(signal.SIGTERM, _shutdown_handler)
-import atexit
 atexit.register(_release_lock)
 
 # ---------------------------------------------------------------------------
-# Banner + status lines (mirror the .ps1's first prints so users see the same
-# kind of output regardless of OS).
+# Banner.
 # ---------------------------------------------------------------------------
 log("Starting...")
 log(f"UserDir: {ZomboidRoot}  ({_userdir_src})")
@@ -316,7 +377,7 @@ def _heartbeat_tick() -> None:
     try:
         HEARTBEAT.write_text(f"{_hb_counter}\n", encoding="ascii")
     except OSError:
-        pass   # next tick will write again
+        pass
 
 # ---------------------------------------------------------------------------
 # Index + VanillaOwned helpers. Same line format as the .ps1.
@@ -347,6 +408,15 @@ def _read_vanilla_owned_lines():
         if ln.strip()
     ]
 
+def _vanilla_owned_regex(gmode: str, slot: str, session_id: str = None):
+    """Single source of truth for the gmode|world|slot|session_id matcher.
+    session_id=None matches any session for the gmode+slot pair."""
+    g_esc = re.escape(gmode)
+    s_esc = re.escape(slot)
+    if session_id:
+        return re.compile(rf"^{g_esc}\|[^|]*\|{s_esc}\|{re.escape(session_id)}$")
+    return re.compile(rf"^{g_esc}\|[^|]*\|{s_esc}\|")
+
 def add_vanilla_owned(gmode: str, world: str, slot: str, session_id: str) -> None:
     entry = f"{gmode}|{world}|{slot}|{session_id}"
     if entry not in _read_vanilla_owned_lines():
@@ -357,12 +427,7 @@ def remove_vanilla_owned(gmode: str, slot: str, session_id: str = None) -> None:
     lines = _read_vanilla_owned_lines()
     if not lines:
         return
-    g_esc = re.escape(gmode)
-    s_esc = re.escape(slot)
-    if session_id:
-        pat = re.compile(rf"^{g_esc}\|[^|]*\|{s_esc}\|{re.escape(session_id)}$")
-    else:
-        pat = re.compile(rf"^{g_esc}\|[^|]*\|{s_esc}\|")
+    pat = _vanilla_owned_regex(gmode, slot, session_id)
     kept = [ln for ln in lines if not pat.match(ln)]
     VANILLA_OWNED.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
 
@@ -370,12 +435,7 @@ def test_vanilla_owned(gmode: str, slot: str, session_id: str = None) -> bool:
     lines = _read_vanilla_owned_lines()
     if not lines:
         return False
-    g_esc = re.escape(gmode)
-    s_esc = re.escape(slot)
-    if session_id:
-        pat = re.compile(rf"^{g_esc}\|[^|]*\|{s_esc}\|{re.escape(session_id)}$")
-    else:
-        pat = re.compile(rf"^{g_esc}\|[^|]*\|{s_esc}\|")
+    pat = _vanilla_owned_regex(gmode, slot, session_id)
     return any(pat.match(ln) for ln in lines)
 
 def get_vanilla_owned_entries():
@@ -387,7 +447,8 @@ def get_vanilla_owned_entries():
     return result
 
 # ---------------------------------------------------------------------------
-# Folder size in MB (string, invariant culture). Used by SAVE/IMPORT meta.
+# Folder size in MB (string, invariant culture). Used by SAVE/IMPORT/crash
+# recovery meta files.
 # ---------------------------------------------------------------------------
 def folder_size_mb(path: Path) -> str:
     total = 0
@@ -435,14 +496,14 @@ def copy_tree_mirror(src: Path, dst: Path) -> bool:
 def copy_thumb_for_clone(gmode: str, world: str, old_slot: str, new_slot: str) -> None:
     """Promote the OLD slot's thumb to the NEW slot. Tries the canonical
     THUMBS folder first, then falls back to the backup's embedded thumb.png."""
-    old_thumb = THUMBS / f"{old_slot}.png"
-    new_thumb = THUMBS / f"{new_slot}.png"
+    old_thumb = slot_thumb_file(old_slot)
+    new_thumb = slot_thumb_file(new_slot)
     if old_thumb.exists():
         try:
             shutil.copyfile(old_thumb, new_thumb)
             return
         except OSError: pass
-    embedded = BACKUPS / gmode / world / old_slot / "thumb.png"
+    embedded = slot_backup_dir(gmode, world, old_slot) / "thumb.png"
     if embedded.exists():
         THUMBS.mkdir(parents=True, exist_ok=True)
         try:
@@ -450,15 +511,11 @@ def copy_thumb_for_clone(gmode: str, world: str, old_slot: str, new_slot: str) -
         except OSError: pass
 
 # ---------------------------------------------------------------------------
-# Crash recovery (real port deferred to Phase 2d). For now we keep the
-# placeholder so the watcher boot sequence matches the .ps1's shape: anything
-# in VanillaOwned at startup means PZ exited uncleanly, but until SAVE/LOAD
-# are ported there's nothing useful to recover — emit a notice and move on.
+# Crash recovery — runs once at boot. Any VanillaOwned entry surviving from
+# the previous run means PZ exited without going through SESSION_END, so we
+# copy the vanilla save into a timestamped recovery slot and clear the entry.
 # ---------------------------------------------------------------------------
 def invoke_crash_recovery() -> None:
-    """Replays the .ps1 logic: any VanillaOwned entry at startup means PZ
-    exited without going through SESSION_END, so we copy the vanilla save
-    into a timestamped recovery slot, write its meta, and clear the entry."""
     reenter_flag = LuaDir / "ManualSave_ReenterFlag.txt"
     if reenter_flag.exists():
         log("Reenter flag found, skipping crash recovery.")
@@ -470,38 +527,36 @@ def invoke_crash_recovery() -> None:
     recovered = []
     for e in entries:
         gmode, world, slot, sid = e["gmode"], e["world"], e["slot"], e["sessionId"]
-        vanilla_path = SAVES / gmode / slot
-        if not vanilla_path.is_dir():
+        src = vanilla_save_dir(gmode, slot)
+        if not src.is_dir():
             remove_vanilla_owned(gmode, slot, sid)
             continue
         ts            = datetime.now().strftime("%Y%m%d_%H%M")
         recovery_slot = f"{slot}_crash_{ts}"
-        dst           = BACKUPS / gmode / world / recovery_slot
+        dst           = slot_backup_dir(gmode, world, recovery_slot)
         dst.mkdir(parents=True, exist_ok=True)
-        if copy_tree_merge(vanilla_path, dst):
-            size  = folder_size_mb(dst)
-            meta  = LuaDir / f"ManualSaves_Meta_{_safe_name(gmode)}_{_safe_name(world)}_{_safe_name(recovery_slot)}.txt"
-            meta.write_text("\n".join([
-                f"DATE={datetime.now().strftime('%d %b %Y %H:%M')}",
+        if copy_tree_merge(src, dst):
+            slot_meta_file(gmode, world, recovery_slot).write_text("\n".join([
+                f"DATE={now_save_date_str()}",
                 "TYPE=CRASH_RECOVERY",
                 f"GMODE={gmode}",
                 f"WORLD={world}",
                 f"SLOT={recovery_slot}",
-                f"SIZE={size} MB",
+                f"SIZE={folder_size_mb(dst)} MB",
                 f"SOURCE_SLOT={slot}",
             ]) + "\n", encoding="utf-8")
             add_to_index(gmode, world, recovery_slot)
-            embedded = vanilla_path / "thumb.png"
+            embedded = src / "thumb.png"
             if embedded.exists():
                 THUMBS.mkdir(parents=True, exist_ok=True)
-                try: shutil.copyfile(embedded, THUMBS / f"{recovery_slot}.png")
+                try: shutil.copyfile(embedded, slot_thumb_file(recovery_slot))
                 except OSError: pass
             log(f"Crash recovery: {slot} -> {recovery_slot}")
             recovered.append(recovery_slot)
         else:
             log(f"Crash recovery: copy failed for {slot}")
-        if vanilla_path.is_dir():
-            shutil.rmtree(vanilla_path, ignore_errors=True)
+        if src.is_dir():
+            shutil.rmtree(src, ignore_errors=True)
         remove_vanilla_owned(gmode, slot, sid)
     if recovered:
         crash_log.write_text("\n".join(recovered) + "\n", encoding="utf-8")
@@ -509,98 +564,23 @@ def invoke_crash_recovery() -> None:
 
 invoke_crash_recovery()
 
-# ---- Phase 2d.4 — IMPORT (queue-based, multi-entry) -------------------------
-
-def op_import(*_):
-    """Imports native PZ saves from SAVES into BACKUPS as standalone slots.
-    The Lua side prepares ManualSave_ImportQueue.txt with one 'gmode|world'
-    line per save the user picked; we process them all in one pass."""
-    import_queue = LuaDir / "ManualSave_ImportQueue.txt"
-    if not import_queue.exists():
-        log("IMPORT: queue file not found.")
-        write_done("ERROR", "IMPORT", {"ERROR": "queue_not_found"})
-        return
-    import_date = datetime.now().strftime("%d %b %Y %H:%M")
-    try:
-        queue_lines = import_queue.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        queue_lines = []
-    for line in queue_lines:
-        parts = line.rstrip("\r\n").split("|", 1)
-        if len(parts) < 2: continue
-        ig = parts[0].strip()
-        iw = parts[1].strip()
-        if not ig or not iw: continue
-        src = SAVES   / ig / iw
-        dst = BACKUPS / ig / iw / iw   # NB: world reused as slot name on import
-        if not src.is_dir():
-            log(f"IMPORT: source not found: {src}")
-            continue
-        log(f"IMPORT: '{iw}' (gmode={ig}) -> {dst}")
-        if not copy_tree_merge(src, dst):
-            continue
-        mods_str = ""
-        mods_file = src / "mods.txt"
-        if mods_file.exists():
-            try:
-                mods_str = ", ".join(
-                    ln.strip()
-                    for ln in mods_file.read_text(encoding="utf-8", errors="replace").splitlines()
-                    if ln.strip()
-                )
-            except OSError: pass
-        sz   = folder_size_mb(dst)
-        meta = LuaDir / f"ManualSaves_Meta_{_safe_name(ig)}_{_safe_name(iw)}_{_safe_name(iw)}.txt"
-        meta.write_text("\n".join([
-            f"DATE={import_date}",
-            "TYPE=NATIVE",
-            f"GMODE={ig}",
-            f"WORLD={iw}",
-            f"SLOT={iw}",
-            "MAP=",
-            f"MODS={mods_str}",
-            f"SIZE={sz} MB",
-            "SOURCE=NATIVE",
-        ]) + "\n", encoding="utf-8")
-        log(f"IMPORT: meta written for '{iw}' (size={sz} MB).")
-        embedded = dst / "thumb.png"
-        if embedded.exists():
-            THUMBS.mkdir(parents=True, exist_ok=True)
-            try:
-                shutil.copyfile(embedded, THUMBS / f"{iw}.png")
-                log(f"IMPORT: thumbnail copied for '{iw}'.")
-            except OSError: pass
-    try: import_queue.unlink()
-    except OSError: pass
-    update_index()
-    write_done("OK", "IMPORT")
-    log("IMPORT complete.")
-
-# ---- Phase 2d.3 — core operations: SAVE, LOAD -------------------------------
-
-def _safe_name(s: str) -> str:
-    """Meta-file name component: spaces become underscores (mirrors .ps1)."""
-    return s.replace(" ", "_")
-
-def _session_id_now() -> str:
-    """LOAD session id format matches PowerShell's 'yyyyMMdd_HHmmss_fff'."""
-    now = datetime.now()
-    return now.strftime("%Y%m%d_%H%M%S_") + f"{now.microsecond // 1000:03d}"
-
+# ---------------------------------------------------------------------------
+# Operation handlers.
+# ---------------------------------------------------------------------------
 def op_save(p):
     gmode      = p.get("GMODE") or ""
     world      = p.get("WORLD") or ""
     slot       = p.get("SLOT")  or ""
     live_world = p.get("LIVE_WORLD") or world
-    src = SAVES   / gmode / live_world
-    dst = BACKUPS / gmode / world / slot
+    src = vanilla_save_dir(gmode, live_world)
+    dst = slot_backup_dir(gmode, world, slot)
     if not src.is_dir():
         log(f"ERROR: save folder not found: {src}")
         write_done("ERROR", "SAVE", {"ERROR": "src_not_found"})
         return
     # PZ keeps writing for a moment after the player triggers a save. Give it
-    # a beat to flush unless this is a quick save (which doesn't suffer from
-    # the race because PZ writes synchronously for quicksaves).
+    # a beat to flush unless this is a quick save (which writes synchronously
+    # and doesn't suffer from the race).
     if "QUICK_SAVE" not in slot:
         log("Full Save: waiting 1 sec for PZ flush...")
         time.sleep(1.0)
@@ -615,10 +595,12 @@ def op_save(p):
     thumb_ver  = datetime.now().strftime("%Y%m%d%H%M%S")
     thumb_file = f"{slot}_v{thumb_ver}.png"
     for stale in THUMBS.glob(f"{slot}_v*.png"):
-        try: stale.unlink()
-        except OSError: pass
+        safe_unlink(stale)
     embedded_thumb  = dst / "thumb.png"
     versioned_thumb = THUMBS / thumb_file
+    # On Linux/Steam Deck/macOS we don't have a portable screenshot path, so
+    # THUMB_PENDING is never produced by handle_screenshot_request(). The save
+    # proceeds without a thumb; the Lua side falls back to its "no thumb" tile.
     if THUMB_PENDING.exists():
         log("Using captured thumbnail.")
         try:
@@ -626,20 +608,16 @@ def op_save(p):
             shutil.copyfile(THUMB_PENDING, versioned_thumb)
         except OSError as e:
             log(f"Thumbnail copy failed: {e}")
-        try: THUMB_PENDING.unlink()
-        except OSError: pass
+        safe_unlink(THUMB_PENDING)
     else:
-        log("No thumbnail, generating placeholder...")
-        _make_placeholder_thumb(embedded_thumb)
-        try: shutil.copyfile(embedded_thumb, versioned_thumb)
-        except OSError: pass
+        log("Screenshot capture not supported on this OS - save will use Lua's no-thumb fallback.")
     # Meta-file footer: only append if the Lua side has already created it.
-    size      = folder_size_mb(dst)
-    date_str  = datetime.now().strftime("%d %b %Y %H:%M")
-    meta_path = LuaDir / f"ManualSaves_Meta_{_safe_name(gmode)}_{_safe_name(world)}_{_safe_name(slot)}.txt"
-    if meta_path.exists():
+    meta = slot_meta_file(gmode, world, slot)
+    if meta.exists():
+        size = folder_size_mb(dst)
+        date_str = now_save_date_str()
         try:
-            with meta_path.open("a", encoding="utf-8") as f:
+            with meta.open("a", encoding="utf-8") as f:
                 f.write(f"SIZE={size} MB\n")
                 f.write(f"DATE={date_str}\n")
                 f.write(f"THUMB_FILE={thumb_file}\n")
@@ -651,7 +629,7 @@ def op_save(p):
     if p.get("SESSION_CLOSE") == "1":
         sid = p.get("SESSION_ID")
         if sid and test_vanilla_owned(gmode, slot, sid):
-            vp = SAVES / gmode / slot
+            vp = vanilla_save_dir(gmode, slot)
             if vp.is_dir():
                 shutil.rmtree(vp, ignore_errors=True)
             remove_vanilla_owned(gmode, slot, sid)
@@ -661,21 +639,21 @@ def op_load(p):
     gmode = p.get("GMODE") or ""
     world = p.get("WORLD") or ""
     slot  = p.get("SLOT")  or ""
-    src = BACKUPS / gmode / world / slot
+    src = slot_backup_dir(gmode, world, slot)
     if not src.is_dir():
         log(f"ERROR: backup not found: {src}")
         write_done("ERROR", "LOAD", {"ERROR": "backup_not_found"})
         return
-    dst = SAVES / gmode / slot
+    dst = vanilla_save_dir(gmode, slot)
     if not copy_tree_mirror(src, dst):
         write_done("ERROR", "LOAD", {"ERROR": "restore_failed"})
         return
     log(f"RESTORE complete: {dst}")
-    session_id = _session_id_now()
+    sid = session_id_now()
     remove_vanilla_owned(gmode, slot)             # purge any stale entry first
-    add_vanilla_owned(gmode, world, slot, session_id)
-    # Flags file: the Lua side may have queued WIPE_ZOMBIES (and other future
-    # flags) for the watcher to honour before PZ reads the save back in.
+    add_vanilla_owned(gmode, world, slot, sid)
+    # Flags file: the Lua side may have queued WIPE_ZOMBIES (and other flags)
+    # for the watcher to honour before PZ reads the save back in.
     safe_slot  = re.sub(r"[\\/ ]", "_", slot)
     flags_file = LuaDir / f"ManualSaves_Flags_{safe_slot}.txt"
     if flags_file.exists():
@@ -693,19 +671,51 @@ def op_load(p):
             zpop_dir = dst / "zpop"
             if zpop_dir.is_dir():
                 for zf in zpop_dir.glob("zpop_*.bin"):
-                    try: zf.unlink()
-                    except OSError: pass
+                    safe_unlink(zf)
             log("Zombie wipe complete.")
         # Pass any remaining flags through to the Lua side via PostLoad file.
         post_flags = ",".join(f for f in flags.split(",") if f and f != "WIPE_ZOMBIES")
         if post_flags:
             (LuaDir / "ManualSaves_PostLoad.txt").write_text(f"FLAGS={post_flags}\n", encoding="utf-8")
             log(f"Post-load flags written: {post_flags}")
-        try: flags_file.unlink()
-        except OSError: pass
-    write_done("OK", "LOAD", {"SLOT": slot, "SESSION_ID": session_id})
+        safe_unlink(flags_file)
+    write_done("OK", "LOAD", {"SLOT": slot, "SESSION_ID": sid})
 
-# ---- Phase 2d.2 — file management operations --------------------------------
+def op_session_end(p):
+    sid   = p.get("SESSION_ID")
+    gmode = p.get("GMODE") or ""
+    slot  = p.get("SLOT")  or ""
+    if sid and test_vanilla_owned(gmode, slot, sid):
+        vp = vanilla_save_dir(gmode, slot)
+        if vp.is_dir():
+            shutil.rmtree(vp, ignore_errors=True)
+        remove_vanilla_owned(gmode, slot, sid)
+        log("SESSION_END: vanilla slot removed.")
+    write_done("OK", "SESSION_END")
+
+def op_delete(p):
+    gmode = p.get("GMODE") or ""
+    world = p.get("WORLD") or ""
+    slot  = p.get("SLOT")  or ""
+    target = slot_backup_dir(gmode, world, slot)
+    if target.is_dir():
+        shutil.rmtree(target, ignore_errors=True)
+    safe_unlink(slot_thumb_file(slot))
+    if THUMBS.is_dir():
+        for thumb in THUMBS.glob(f"{slot}_v*.png"):
+            safe_unlink(thumb)
+    prune_empty(world_backup_dir(gmode, world))
+    prune_empty(gmode_backup_dir(gmode))
+    # If the slot was mod-tracked as vanilla-owned, nuke the vanilla folder too.
+    if test_vanilla_owned(gmode, slot):
+        vanilla_slot = vanilla_save_dir(gmode, slot)
+        if vanilla_slot.is_dir():
+            shutil.rmtree(vanilla_slot, ignore_errors=True)
+            log(f"DELETE: vanilla save removed: {vanilla_slot}")
+        remove_vanilla_owned(gmode, slot)
+        prune_empty(gmode_vanilla_dir(gmode))
+    update_index()
+    write_done("OK", "DELETE")
 
 def _resolve_old_new_slot(p):
     """Lua may pass OLD_SLOT/NEW_SLOT as separate keys or packed into SLOT
@@ -724,21 +734,21 @@ def op_rename(p):
     gmode = p.get("GMODE") or ""
     world = p.get("WORLD") or ""
     old_slot, new_slot = _resolve_old_new_slot(p)
-    src = BACKUPS / gmode / world / old_slot
+    src = slot_backup_dir(gmode, world, old_slot)
     if not src.is_dir():
         log(f"RENAME ERROR: source not found: {src}")
         write_done("ERROR", "RENAME", {"ERROR": "source_not_found"})
         return
-    dst = BACKUPS / gmode / world / new_slot
+    dst = slot_backup_dir(gmode, world, new_slot)
     try:
         src.rename(dst)
     except OSError as e:
         log(f"RENAME failed: {e}")
         write_done("ERROR", "RENAME", {"ERROR": "rename_failed"})
         return
-    old_thumb = THUMBS / f"{old_slot}.png"
+    old_thumb = slot_thumb_file(old_slot)
     if old_thumb.exists():
-        try: old_thumb.rename(THUMBS / f"{new_slot}.png")
+        try: old_thumb.rename(slot_thumb_file(new_slot))
         except OSError: pass
     update_index()
     write_done("OK", "RENAME", {"SLOT": new_slot})
@@ -747,27 +757,24 @@ def op_clone(p):
     gmode = p.get("GMODE") or ""
     world = p.get("WORLD") or ""
     old_slot, new_slot = _resolve_old_new_slot(p)
-    src = BACKUPS / gmode / world / old_slot
+    src = slot_backup_dir(gmode, world, old_slot)
     if src.is_dir():
-        copy_tree_merge(src, BACKUPS / gmode / world / new_slot)
+        copy_tree_merge(src, slot_backup_dir(gmode, world, new_slot))
     update_index()
     copy_thumb_for_clone(gmode, world, old_slot, new_slot)
-    write_done("OK", "CLONE", {
-        "SLOT": new_slot,
-        "DATE": datetime.now().strftime("%d %b %Y %H:%M"),
-    })
+    write_done("OK", "CLONE", {"SLOT": new_slot, "DATE": now_save_date_str()})
 
 def op_clone_mods(p):
     gmode = p.get("GMODE") or ""
     world = p.get("WORLD") or ""
     old_slot, new_slot = _resolve_old_new_slot(p)
     mod_list = p.get("MODS") or ""
-    src = BACKUPS / gmode / world / old_slot
+    src = slot_backup_dir(gmode, world, old_slot)
     if not src.is_dir():
         log(f"CLONE_MODS: source not found: {src}")
         write_done("ERROR", "CLONE_MODS", {"ERROR": "source_not_found"})
         return
-    dst = BACKUPS / gmode / world / new_slot
+    dst = slot_backup_dir(gmode, world, new_slot)
     if not copy_tree_merge(src, dst):
         write_done("ERROR", "CLONE_MODS", {"ERROR": "copy_failed"})
         return
@@ -778,40 +785,43 @@ def op_clone_mods(p):
     copy_thumb_for_clone(gmode, world, old_slot, new_slot)
     write_done("OK", "CLONE_MODS", {"SLOT": new_slot})
 
+def op_rename_world(p):
+    gmode     = p.get("GMODE") or ""
+    old_world = p.get("OLD_WORLD") or p.get("WORLD") or ""
+    new_world = p.get("NEW_WORLD") or ""
+    slot      = p.get("SLOT") or ""
+    # Fallback used by Lua: NEW_WORLD encoded as the second half of SLOT="OLD|NEW".
+    if not new_world and "|" in slot:
+        new_world = slot.split("|", 1)[1]
+    if old_world and new_world:
+        src = world_backup_dir(gmode, old_world)
+        if src.is_dir():
+            try:
+                src.rename(world_backup_dir(gmode, new_world))
+            except OSError as e:
+                log(f"RENAME_WORLD failed: {e}")
+    update_index()
+    write_done("OK", "RENAME_WORLD")
+
 def op_export_vanilla(p):
     gmode = p.get("GMODE") or ""
     world = p.get("WORLD") or ""
     slot  = p.get("SLOT")  or ""
     export_name = p.get("EXPORT_NAME") or f"{slot}_exported"
-    src = BACKUPS / gmode / world / slot
+    src = slot_backup_dir(gmode, world, slot)
     if not src.is_dir():
         log(f"EXPORT_VANILLA: source not found: {src}")
         write_done("ERROR", "EXPORT_VANILLA", {"ERROR": "source_not_found"})
         return
-    dst = SAVES / gmode / export_name
+    dst = vanilla_save_dir(gmode, export_name)
     if not copy_tree_merge(src, dst):
         write_done("ERROR", "EXPORT_VANILLA", {"ERROR": "copy_failed"})
         return
     # The .ps1 crops the thumb to 250x250 via System.Drawing here. The Pillow
-    # equivalent is straightforward but adds a non-stdlib dependency we want
-    # to avoid for the watcher. The full-size thumb still works as an export
-    # preview; Phase 3 can revisit if needed.
+    # equivalent is straightforward but adds a non-stdlib dependency we'd
+    # rather avoid; the full-size thumb still works as an export preview.
     log(f"EXPORT_VANILLA: {slot} -> {dst}")
     write_done("OK", "EXPORT_VANILLA")
-
-# ---- Phase 2d.1 — simple operations -----------------------------------------
-
-def op_session_end(p):
-    sid   = p.get("SESSION_ID")
-    gmode = p.get("GMODE") or ""
-    slot  = p.get("SLOT")  or ""
-    if sid and test_vanilla_owned(gmode, slot, sid):
-        vp = SAVES / gmode / slot
-        if vp.is_dir():
-            shutil.rmtree(vp, ignore_errors=True)
-        remove_vanilla_owned(gmode, slot, sid)
-        log("SESSION_END: vanilla slot removed.")
-    write_done("OK", "SESSION_END")
 
 def op_scan_vanilla(*_):
     scan_result = LuaDir / "ManualSave_VanillaScan.txt"
@@ -819,7 +829,7 @@ def op_scan_vanilla(*_):
     if SAVES.is_dir():
         for g in sorted(c for c in SAVES.iterdir() if c.is_dir() and not c.name.startswith("MSM_")):
             for w in sorted(c for c in g.iterdir() if c.is_dir()):
-                imported = "1" if (BACKUPS / g.name / w.name / w.name).is_dir() else "0"
+                imported = "1" if slot_backup_dir(g.name, w.name, w.name).is_dir() else "0"
                 try:
                     fdate = datetime.fromtimestamp(w.stat().st_mtime).strftime("%m/%d/%Y %H:%M")
                 except OSError:
@@ -836,62 +846,68 @@ def op_scan_vanilla(*_):
     write_done("OK", "SCAN_VANILLA")
     log("SCAN_VANILLA complete.")
 
-def op_rename_world(p):
-    gmode     = p.get("GMODE") or ""
-    old_world = p.get("OLD_WORLD") or p.get("WORLD") or ""
-    new_world = p.get("NEW_WORLD") or ""
-    slot      = p.get("SLOT") or ""
-    # Fallback used by Lua: NEW_WORLD encoded as the second half of SLOT="OLD|NEW".
-    if not new_world and "|" in slot:
-        new_world = slot.split("|", 1)[1]
-    if old_world and new_world:
-        src = BACKUPS / gmode / old_world
-        if src.is_dir():
+def op_import(*_):
+    """Imports native PZ saves from SAVES into BACKUPS as standalone slots.
+    The Lua side prepares ManualSave_ImportQueue.txt with one 'gmode|world'
+    line per save the user picked; we process them all in one pass."""
+    import_queue = LuaDir / "ManualSave_ImportQueue.txt"
+    if not import_queue.exists():
+        log("IMPORT: queue file not found.")
+        write_done("ERROR", "IMPORT", {"ERROR": "queue_not_found"})
+        return
+    import_date = now_save_date_str()
+    try:
+        queue_lines = import_queue.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        queue_lines = []
+    for line in queue_lines:
+        parts = line.rstrip("\r\n").split("|", 1)
+        if len(parts) < 2: continue
+        ig = parts[0].strip()
+        iw = parts[1].strip()
+        if not ig or not iw: continue
+        src = vanilla_save_dir(ig, iw)
+        dst = slot_backup_dir(ig, iw, iw)   # NB: world reused as slot name on import
+        if not src.is_dir():
+            log(f"IMPORT: source not found: {src}")
+            continue
+        log(f"IMPORT: '{iw}' (gmode={ig}) -> {dst}")
+        if not copy_tree_merge(src, dst):
+            continue
+        mods_str = ""
+        mods_file = src / "mods.txt"
+        if mods_file.exists():
             try:
-                src.rename(BACKUPS / gmode / new_world)
-            except OSError as e:
-                log(f"RENAME_WORLD failed: {e}")
-    update_index()
-    write_done("OK", "RENAME_WORLD")
-
-def op_delete(p):
-    gmode = p.get("GMODE") or ""
-    world = p.get("WORLD") or ""
-    slot  = p.get("SLOT")  or ""
-    target = BACKUPS / gmode / world / slot
-    if target.is_dir():
-        shutil.rmtree(target, ignore_errors=True)
-    # Remove slot thumbs (both the plain name and the versioned set).
-    plain = THUMBS / f"{slot}.png"
-    if plain.exists():
-        try: plain.unlink()
-        except OSError: pass
-    if THUMBS.is_dir():
-        for thumb in THUMBS.glob(f"{slot}_v*.png"):
-            try: thumb.unlink()
+                mods_str = ", ".join(
+                    ln.strip()
+                    for ln in mods_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                    if ln.strip()
+                )
             except OSError: pass
-    # Prune empty parent dirs (world first, then gmode), matching the .ps1.
-    world_dir = BACKUPS / gmode / world
-    if world_dir.is_dir() and not any(world_dir.iterdir()):
-        try: world_dir.rmdir()
-        except OSError: pass
-    gmode_dir = BACKUPS / gmode
-    if gmode_dir.is_dir() and not any(gmode_dir.iterdir()):
-        try: gmode_dir.rmdir()
-        except OSError: pass
-    # If the slot was mod-tracked as vanilla-owned, nuke the vanilla folder too.
-    if test_vanilla_owned(gmode, slot):
-        vanilla_slot = SAVES / gmode / slot
-        if vanilla_slot.is_dir():
-            shutil.rmtree(vanilla_slot, ignore_errors=True)
-            log(f"DELETE: vanilla save removed: {vanilla_slot}")
-        remove_vanilla_owned(gmode, slot)
-        vanilla_gmode = SAVES / gmode
-        if vanilla_gmode.is_dir() and not any(vanilla_gmode.iterdir()):
-            try: vanilla_gmode.rmdir()
+        sz = folder_size_mb(dst)
+        slot_meta_file(ig, iw, iw).write_text("\n".join([
+            f"DATE={import_date}",
+            "TYPE=NATIVE",
+            f"GMODE={ig}",
+            f"WORLD={iw}",
+            f"SLOT={iw}",
+            "MAP=",
+            f"MODS={mods_str}",
+            f"SIZE={sz} MB",
+            "SOURCE=NATIVE",
+        ]) + "\n", encoding="utf-8")
+        log(f"IMPORT: meta written for '{iw}' (size={sz} MB).")
+        embedded = dst / "thumb.png"
+        if embedded.exists():
+            THUMBS.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copyfile(embedded, slot_thumb_file(iw))
+                log(f"IMPORT: thumbnail copied for '{iw}'.")
             except OSError: pass
+    safe_unlink(import_queue)
     update_index()
-    write_done("OK", "DELETE")
+    write_done("OK", "IMPORT")
+    log("IMPORT complete.")
 
 DISPATCH = {
     "SAVE":           op_save,
@@ -908,39 +924,21 @@ DISPATCH = {
 }
 
 # ---------------------------------------------------------------------------
-# Screenshot stub. Real port is Phase 3 (option A/B/C still to be picked).
-# For now we just acknowledge the request with a placeholder thumbnail so
-# the SAVE pipeline can complete end-to-end during testing.
+# Screenshot request handling.
+# Project Zomboid on Linux/Steam Deck/macOS doesn't expose a portable way to
+# capture the game window from outside the process the way the Windows .ps1
+# does via Win32 + GDI. Rather than ship a half-broken fallback that produces
+# garbage thumbnails, this port leaves saves thumbnail-less on these platforms
+# and the Settings UI surfaces an explanation so the user knows why.
+#
+# We still need to reply on SCREEN_REQ so the Lua side doesn't sit waiting:
+# we delete the request, never create THUMB_PENDING, and signal DONE.
 # ---------------------------------------------------------------------------
-def _make_placeholder_thumb(dst: Path) -> None:
-    """Pick a random PNG/JPG from placeholders/ if available, else write an
-    empty 1-byte file. PIL/Pillow aren't stdlib so we deliberately don't
-    transcode JPGs into PNGs here — Phase 3 handles real screenshots."""
-    if PLACEHOLDER_DIR.is_dir():
-        images = [p for p in PLACEHOLDER_DIR.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg")]
-        if images:
-            import random
-            pick = random.choice(images)
-            try:
-                shutil.copyfile(pick, dst)
-                return
-            except OSError:
-                pass
-    try:
-        dst.write_bytes(b"")
-    except OSError:
-        pass
-
 def handle_screenshot_request() -> None:
-    log("Screenshot request received (stub: copying random placeholder).")
-    try: SCREEN_REQ.unlink()
-    except OSError: pass
-    if THUMB_PENDING.exists():
-        try: THUMB_PENDING.unlink()
-        except OSError: pass
-    _make_placeholder_thumb(THUMB_PENDING)
+    log("Screenshot request received - capture not supported on this OS, replying empty.")
+    safe_unlink(SCREEN_REQ)
+    safe_unlink(THUMB_PENDING)
     SCREEN_DONE.write_text("DONE\n", encoding="utf-8")
-    log("Screenshot placeholder ready.")
 
 # ---------------------------------------------------------------------------
 # Main polling loop. Same cadence as the .ps1 (100ms). Screenshot has higher
@@ -962,8 +960,7 @@ while True:
         continue
 
     params = read_signal(SIGNAL)
-    try: SIGNAL.unlink()
-    except OSError: pass
+    safe_unlink(SIGNAL)
 
     action = (params.get("ACTION") or "").upper()
     if not action:

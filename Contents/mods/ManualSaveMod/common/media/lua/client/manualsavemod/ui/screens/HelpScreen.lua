@@ -236,7 +236,10 @@ local _watcherLocation = nil
 local function watcherFrames()
     if _watcherFrames then return _watcherFrames end
     _watcherFrames = {}
-    for i = 1, 7 do
+    -- 83 frames extracted from WatcherOptimizedNewOsSystems.gif: opens the mod
+    -- folder, enters the OS subfolder, double-clicks the launcher, and shows
+    -- the Watcher running in a terminal.
+    for i = 1, 83 do
         table.insert(_watcherFrames,
             getTexture(string.format("media/textures/help/watcher/watcher_%02d.png", i)))
     end
@@ -259,7 +262,12 @@ local function watcher_what_lines()
         -- Caption + inline animation: the dim line above the image tells the
         -- user what they're looking at; the image scales to the panel width.
         { getText("UI_MSM_Help_Watcher_GifCaption"), "dim" },
-        { { textures=watcherFrames(), fps=36, aspect=173/400 }, "image" },
+        -- Discoverability hint for the new v1.6.0 click-to-zoom feature.
+        { getText("UI_MSM_Help_Zoom_Tip"),           "callout" },
+        -- Source GIF is 800x400 (aspect 1:2) at 10 fps; we replay it natively.
+        -- zoomable=true lets the user click the image to open it in Lightbox.
+        { { textures=watcherFrames(), fps=10, aspect=400/800, zoomable=true,
+            caption = getText("UI_MSM_Help_Watcher_GifCaption") }, "image" },
         { "",                                           },
         { getText("UI_MSM_Help_Watcher_05"), "header"   },
         { getText("UI_MSM_Help_Watcher_06"), "body"     },
@@ -287,7 +295,8 @@ local function watcher_run_lines()
         -- Screenshot of the mod folder with ManualSave_Watcher.cmd highlighted,
         -- so the user immediately sees what the file looks like / where it sits.
         { getText("UI_MSM_Help_WatcherRun_LocationCaption"), "dim" },
-        { { textures=watcherLocationTex(), fps=1, aspect=409/600 }, "image" },
+        { { textures=watcherLocationTex(), fps=1, aspect=400/800, zoomable=true,
+            caption = getText("UI_MSM_Help_WatcherRun_LocationCaption") }, "image" },
         { "",                                            },
         { getText("UI_MSM_Help_WatcherRun_08"), "header" },
         { getText("UI_MSM_Help_WatcherRun_09"), "body"   },

@@ -7,9 +7,9 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Migration safety net (v1.5.4 layout change):
-# Pre-v1.5.4 the watcher and ManualSave_UserDir.txt lived in the mod root.
-# From v1.5.4 they live inside Windows/. If an old root-level file survives
+# Migration safety net (v1.6.0 layout change):
+# Pre-v1.6.0 the watcher and ManualSave_UserDir.txt lived in the mod root.
+# From v1.6.0 they live inside Windows/. If an old root-level file survives
 # (manual install / DEV folder), copy its contents over the freshly shipped
 # default so a user with a customised Zomboid path doesn't lose it on update.
 $_legacyUserDir = Join-Path $PSScriptRoot "..\ManualSave_UserDir.txt"
@@ -194,6 +194,11 @@ Write-Host "[ManualSave_Watcher] Backups: $BACKUPS"
 if (-not (Test-Path $BACKUPS)) { New-Item -ItemType Directory -Path $BACKUPS -Force | Out-Null }
 if (-not (Test-Path $THUMBS))  { New-Item -ItemType Directory -Path $THUMBS  -Force | Out-Null }
 if (-not (Test-Path $INDEX))   { "" | Set-Content $INDEX }
+
+# Advertise the host OS to the Lua side so the Settings screen can gate the
+# screenshot option (only the .ps1 has Win32/GDI capture; the Python port on
+# Linux/macOS leaves saves thumbnail-less).
+"windows" | Set-Content "$LuaDir\ManualSave_OS.txt"
 
 # Migrate old MSM_THUMB_* folders
 foreach ($T in (Get-ChildItem "$SAVES\MSM_THUMB_*" -Directory -EA SilentlyContinue)) {

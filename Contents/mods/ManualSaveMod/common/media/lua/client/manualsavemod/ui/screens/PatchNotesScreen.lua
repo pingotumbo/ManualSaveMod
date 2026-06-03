@@ -23,25 +23,11 @@ local function openURL(url)
     if openUrl then pcall(openUrl, url) end ---@diagnostic disable-line: undefined-global
 end
 
--- Word-wrap a string to maxW pixels for the given font.
-local function wrap(text, font, maxW)
-    local tm = getTextManager()
-    if not text or text == "" then return { "" } end
-    if maxW <= 0 or tm:MeasureStringX(font, text) <= maxW then return { text } end
-    local out, line = {}, ""
-    for word in (text .. " "):gmatch("([^ ]+) ") do
-        local try = (line == "") and word or (line .. " " .. word)
-        if tm:MeasureStringX(font, try) <= maxW then
-            line = try
-        else
-            if line ~= "" then table.insert(out, line) end
-            line = word
-        end
-    end
-    if line ~= "" then table.insert(out, line) end
-    if #out == 0 then out[1] = "" end
-    return out
-end
+-- Local alias to the shared toolkit helper (loaded earlier from
+-- ui/base/widgets/elements/Text.lua). Centralising wrap() in one place means
+-- every screen wraps the same way and a future improvement to wrap (e.g.
+-- breaking long words) lands everywhere at once.
+local wrap = ManualSave.Text.wrap
 
 -- Checkbox-style button: draws a checkbox glyph + label, toggles on activate.
 local function makeCheckbox(parent, opts)
@@ -104,15 +90,73 @@ function ManualSave.openPatchNotes()
     local fixed      = PN.fixed()
 
     -- ── Layout pass: compute total height so nothing overflows ────────────────
+    -- Cards auto-size in HEIGHT so any wrapped translation can fit, no matter
+    -- how long it gets. Per-card height = top pad + title row + gap + N wrapped
+    -- desc rows + bottom pad. The two cards in a row share the taller height
+    -- so the grid stays aligned.
     local colGap  = TH.GAP
     local cardW   = math.floor((W - TH.PAD * 2 - colGap) / 2)
     local rows    = math.ceil(#highlights / 2)
-    local gridH   = rows * CARD_H + (rows - 1) * TH.GAP
+
+    local CARD_TOP_PAD    = 12
+    local CARD_BOT_PAD    = 12
+    local CARD_TITLE_GAP  = 4
+    local CARD_TEXT_INSET = 14   -- left padding inside the card before icon/text
+
+    local function cardTextW(hl)
+        local inner = cardW - CARD_TEXT_INSET - 12
+        if hl.tex then inner = inner - ICON_SZ - 12 end
+        return inner
+    end
+    local function cardDescRows(hl)
+        return wrap(hl.desc or "", UIFont.Small, cardTextW(hl))
+    end
+    -- Per-card content height (text-driven), floored to CARD_H so visually
+    -- consistent for short single-line descs too.
+    local cardH = {}
+    for i, hl in ipairs(highlights) do
+        local nRows = #cardDescRows(hl)
+        local h = CARD_TOP_PAD + TH.FONT_HGT_MEDIUM + CARD_TITLE_GAP
+                + nRows * lh + CARD_BOT_PAD
+        cardH[i] = math.max(CARD_H, h)
+    end
+    -- For each row in the 2-col grid, take the tallest of the two cards.
+    local rowH = {}
+    for r = 1, rows do
+        local h1 = cardH[(r - 1) * 2 + 1] or 0
+        local h2 = cardH[(r - 1) * 2 + 2] or 0
+        rowH[r] = math.max(h1, h2, CARD_H)
+    end
+    -- Cumulative Y for each row, and total grid height.
+    local rowY  = {}
+    local gridH = 0
+    do
+        local accY = 0
+        for r = 1, rows do
+            rowY[r] = accY
+            accY    = accY + rowH[r] + TH.GAP
+        end
+        gridH = accY - (rows > 0 and TH.GAP or 0)
+    end
 
     local gridTop  = titleH + TH.PAD
     local fixHdrY  = gridTop + gridH + TH.PAD
     local fixListY = fixHdrY + lh + 4
-    local linkY    = fixListY + #fixed * lh + TH.GAP
+
+    -- Wrap every fix line up-front so the list height grows with the longest
+    -- translation instead of overflowing to the right. The same wrapped table
+    -- is reused by prerender to avoid wrapping twice per frame.
+    local FIX_BULLET_INDENT = 18
+    local fixTextW          = W - TH.PAD * 2 - FIX_BULLET_INDENT
+    local fixedWrapped      = {}
+    local fixedTotalRows    = 0
+    for _, ln in ipairs(fixed) do
+        local wrapped = wrap(ln or "", UIFont.Small, fixTextW)
+        table.insert(fixedWrapped, wrapped)
+        fixedTotalRows = fixedTotalRows + #wrapped
+    end
+
+    local linkY    = fixListY + fixedTotalRows * lh + TH.GAP
     local footerY  = linkY + lh + TH.PAD
     local H        = footerY + footerH + TH.PAD
 
@@ -124,6 +168,14 @@ function ManualSave.openPatchNotes()
 
     local function doClose()
         _open = false
+        -- Stamp the current mod version so the popup won't auto-reshow on the
+        -- next boot for THIS release. A future release (modversion change) will
+        -- re-trigger it via maybeShowPatchNotes() even if the user previously
+        -- ticked "Don't show this again".
+        local v = PN.version() or ""
+        if v ~= "" and v ~= "?" then
+            ManualSave.Config.set("LAST_SEEN_VERSION", v)
+        end
         d.close()
     end
 
@@ -147,27 +199,29 @@ function ManualSave.openPatchNotes()
         self2:drawRectBorder(bx, by, bw, bh, 0.8, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
         self2:drawText(badge, bx + 7, by + 3, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Small)
 
-        -- Hero highlight cards (optional left icon + title + wrapped desc)
+        -- Hero highlight cards (optional left icon + title + wrapped desc).
+        -- Card height is row-driven (computed above) so wrapped desc lines
+        -- are never truncated: every line of every translation is shown.
         for i, hl in ipairs(highlights) do
-            local col  = (i - 1) % 2
-            local row  = math.floor((i - 1) / 2)
-            local cx   = TH.PAD + col * (cardW + colGap)
-            local cy   = gridTop + row * (CARD_H + TH.GAP)
-            self2:drawRect(cx, cy, cardW, CARD_H, 1, TH.PANEL_R, TH.PANEL_G, TH.PANEL_B)
-            self2:drawRectBorder(cx, cy, cardW, CARD_H, 1, TH.LINE_R, TH.LINE_G, TH.LINE_B)
-            self2:drawRect(cx, cy, 3, CARD_H, 1, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-            local textX = cx + 14
+            local col   = (i - 1) % 2
+            local rowIx = math.floor((i - 1) / 2) + 1
+            local cx    = TH.PAD + col * (cardW + colGap)
+            local cy    = gridTop + rowY[rowIx]
+            local ch    = rowH[rowIx]
+            self2:drawRect(cx, cy, cardW, ch, 1, TH.PANEL_R, TH.PANEL_G, TH.PANEL_B)
+            self2:drawRectBorder(cx, cy, cardW, ch, 1, TH.LINE_R, TH.LINE_G, TH.LINE_B)
+            self2:drawRect(cx, cy, 3, ch, 1, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
+            local textX = cx + CARD_TEXT_INSET
             if hl.tex then
-                local iy = cy + math.floor((CARD_H - ICON_SZ) / 2)
+                local iy = cy + math.floor((ch - ICON_SZ) / 2)
                 self2:drawTextureScaled(hl.tex, cx + 12, iy, ICON_SZ, ICON_SZ, 1)
                 textX = cx + 12 + ICON_SZ + 12
             end
-            local textW = cardW - (textX - cx) - 12
-            self2:drawText(hl.title, textX, cy + 12,
+            self2:drawText(hl.title, textX, cy + CARD_TOP_PAD,
                 TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Medium)
-            local dy    = cy + 12 + TH.FONT_HGT_MEDIUM + 4
-            local rows2 = wrap(hl.desc, UIFont.Small, textW)
-            for li = 1, math.min(3, #rows2) do
+            local dy    = cy + CARD_TOP_PAD + TH.FONT_HGT_MEDIUM + CARD_TITLE_GAP
+            local rows2 = cardDescRows(hl)
+            for li = 1, #rows2 do
                 self2:drawText(rows2[li], textX, dy,
                     TH.MUTED_R, TH.MUTED_G, TH.MUTED_B, 1, UIFont.Small)
                 dy = dy + lh
@@ -179,12 +233,18 @@ function ManualSave.openPatchNotes()
         self2:drawText(fh, TH.PAD, fixHdrY, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 0.95, UIFont.Small)
         self2:drawRect(TH.PAD, fixHdrY + FHS + 1, W - TH.PAD * 2, 1, 0.3,
             TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B)
-        -- Fixed list (> bullets)
+        -- Fixed list (> bullets). Each entry can wrap onto multiple lines;
+        -- the bullet aligns with the first line, continuation lines are
+        -- indented to match the bullet's text column.
         local fy = fixListY
-        for _, line in ipairs(fixed) do
+        for i = 1, #fixed do
+            local wrapped = fixedWrapped[i]
             self2:drawText(">", TH.PAD + 4, fy, TH.ACCENT_R, TH.ACCENT_G, TH.ACCENT_B, 1, UIFont.Small)
-            self2:drawText(line, TH.PAD + 18, fy, TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.85, UIFont.Small)
-            fy = fy + lh
+            for _, row in ipairs(wrapped) do
+                self2:drawText(row, TH.PAD + FIX_BULLET_INDENT, fy,
+                    TH.TEXT_R, TH.TEXT_G, TH.TEXT_B, 0.85, UIFont.Small)
+                fy = fy + lh
+            end
         end
         -- Footer separator
         self2:drawRect(0, footerY - math.floor(TH.PAD / 2), W, 1, 1,
@@ -232,13 +292,21 @@ function ManualSave.openPatchNotes()
         end,
     })
 
-    -- Footer: Visit website + Close (right)
+    -- Footer (right side): Linux feedback + Visit website + Close
     local closeLabel = getText("UI_MSM_Common_BtnClose")
     local siteLabel  = getText("UI_MSM_Patch_Website")
+    local linuxLabel = getText("UI_MSM_Patch_LinuxFeedback")
     local closeW     = ManualSave.textBtnW(closeLabel, 80)
     local siteW      = ManualSave.textBtnW(siteLabel, 110)
+    local linuxW     = ManualSave.textBtnW(linuxLabel, 150)
     local closeX     = W - TH.PAD - closeW
     local siteX      = closeX - TH.GAP - siteW
+    local linuxX     = siteX  - TH.GAP - linuxW
+    ManualSave.makeButton(p, {
+        x = linuxX, y = footerY, w = linuxW, h = TH.BUTTON_HGT,
+        label = linuxLabel, style = "accent",
+        onClick = function() openURL(PN.LINUX_FEEDBACK_URL) end,
+    })
     ManualSave.makeButton(p, {
         x = siteX, y = footerY, w = siteW, h = TH.BUTTON_HGT,
         label = siteLabel, style = "normal",
@@ -256,10 +324,27 @@ function ManualSave.openPatchNotes()
     d.open()
 end
 
--- Opens the popup only if the user has not suppressed it. Called when the Load
--- screen opens from the main menu.
+-- Decides whether the "What's New" popup should auto-open. Called by
+-- LoadScreen the first time the user reaches it from the main menu.
+--
+-- The popup re-emerges on every NEW mod version even when the user has
+-- previously ticked "Don't show this again": we compare the current
+-- modversion against LAST_SEEN_VERSION (stored when the popup was last
+-- closed). When they differ, the popup is forced open (and the "don't show"
+-- flag is reset to "1" so the footer checkbox starts unchecked again).
+-- When they match, we respect SHOW_PATCH_NOTES.
 function ManualSave.maybeShowPatchNotes()
     if _open then return end
+    local PN          = ManualSave.PatchNotes
+    local currentVer  = (PN and PN.version and PN.version()) or ""
+    local lastSeen    = ManualSave.Config.get("LAST_SEEN_VERSION") or ""
+    if currentVer ~= "" and currentVer ~= "?" and currentVer ~= lastSeen then
+        -- New release: reset the suppression flag so the footer checkbox is
+        -- unchecked by default in this release's popup.
+        ManualSave.Config.set("SHOW_PATCH_NOTES", "1")
+        ManualSave.openPatchNotes()
+        return
+    end
     if ManualSave.Config.get("SHOW_PATCH_NOTES") ~= "1" then return end
     ManualSave.openPatchNotes()
 end

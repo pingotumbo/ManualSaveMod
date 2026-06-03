@@ -11,3 +11,5 @@ Thumbs.db
 DEVLOG.txt
 publish_to_workshop.ps1
 ManualSave_Sync*.cmd
+# Python bytecode caches
+**/__pycache__/

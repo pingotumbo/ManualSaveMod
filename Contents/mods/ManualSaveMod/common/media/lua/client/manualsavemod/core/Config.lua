@@ -24,6 +24,10 @@ local DEFAULTS = {
     SHORTCUT_QUICK_SAVE = "K",         -- key letter / F1..F12 / "" disables
     SHORTCUT_QUICK_LOAD = "F9",
     SHOW_PATCH_NOTES    = "1",         -- "1" show What's New popup, "0" suppressed
+    LAST_SEEN_VERSION   = "",          -- modversion of the last popup the user closed;
+                                       -- mismatch with current modversion forces a re-show
+                                       -- so every new release surfaces its notes even if
+                                       -- the user ticked "Don't show this again" before.
 }
 
 local _data = nil

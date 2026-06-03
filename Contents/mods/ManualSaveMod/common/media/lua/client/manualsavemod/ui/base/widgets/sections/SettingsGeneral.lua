@@ -102,37 +102,57 @@ function ManualSave.makeSettingsGeneral(parent, opts)
     })
     cy = cy + descImg.panel:getHeight() + TH.GAP
 
-    ManualSave.makeOptionCards(p, {
-        x=14, y=cy, w=w-28,
-        getValue = function() return ManualSave.Config.get("THUMB_SOURCE") end,
-        onChange = function(val) ManualSave.Config.set("THUMB_SOURCE", val) end,
-        cards = {
-            { value="screenshot",  titleKey="UI_MSM_Settings_ThumbScreenshotTitle",
-              tex=getTexture("media/textures/MSM_ThumbPreview_Screenshot.png") },
-            { value="placeholder", titleKey="UI_MSM_Settings_ThumbPlaceholderTitle",
-              tex=getTexture("media/textures/MSM_ThumbPreview_Placeholder.png") },
-        },
-    })
-    cy = cy + 64 + 26 + TH.GAP   -- card body (~64) + internal title (~26) + bottom gap
+    -- Screenshot capture is Windows-only for now: the Linux/macOS Watcher port
+    -- doesn't have a portable way to grab the game window from outside PZ.
+    -- On those systems we replace the radio + AI placeholder note with a
+    -- single explanatory paragraph; saves are created without a thumbnail and
+    -- the Lua side falls back to its built-in "no thumb" tile.
+    local isWindows = true
+    if ManualSave.Platform and ManualSave.Platform.refresh then
+        ManualSave.Platform.refresh()
+        isWindows = ManualSave.Platform.isWindows()
+    end
 
-    -- AI placeholder notice + Help link. The default thumbnail art is currently
-    -- AI-generated; a "?" button jumps to the Help page that explains this and
-    -- invites artists to contribute real art.
-    local btnSz   = 22
-    local aiLblW  = (w - 28) - btnSz - TH.GAP
-    local aiLbl   = ManualSave.makeLabel(p, {
-        x=14, y=cy + math.floor((btnSz - TH.FONT_HGT_SMALL) / 2), w=aiLblW, wrap=true,
-        getText = function() return getText("UI_MSM_Settings_AINote") end,
-        r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.75,
-    })
-    ManualSave.makeButton(p, {
-        x = 14 + aiLblW + TH.GAP, y = cy, w = btnSz, h = btnSz,
-        label = "?", style = "normal",
-        onClick = function()
-            if ManualSave.openHelpScreen then ManualSave.openHelpScreen("ai_placeholders") end
-        end,
-    })
-    cy = cy + math.max(aiLbl.panel:getHeight(), btnSz) + TH.GAP
+    if isWindows then
+        ManualSave.makeOptionCards(p, {
+            x=14, y=cy, w=w-28,
+            getValue = function() return ManualSave.Config.get("THUMB_SOURCE") end,
+            onChange = function(val) ManualSave.Config.set("THUMB_SOURCE", val) end,
+            cards = {
+                { value="screenshot",  titleKey="UI_MSM_Settings_ThumbScreenshotTitle",
+                  tex=getTexture("media/textures/MSM_ThumbPreview_Screenshot.png") },
+                { value="placeholder", titleKey="UI_MSM_Settings_ThumbPlaceholderTitle",
+                  tex=getTexture("media/textures/MSM_ThumbPreview_Placeholder.png") },
+            },
+        })
+        cy = cy + 64 + 26 + TH.GAP   -- card body (~64) + internal title (~26) + bottom gap
+
+        -- AI placeholder notice + Help link. The default thumbnail art is currently
+        -- AI-generated; a "?" button jumps to the Help page that explains this and
+        -- invites artists to contribute real art.
+        local btnSz   = 22
+        local aiLblW  = (w - 28) - btnSz - TH.GAP
+        local aiLbl   = ManualSave.makeLabel(p, {
+            x=14, y=cy + math.floor((btnSz - TH.FONT_HGT_SMALL) / 2), w=aiLblW, wrap=true,
+            getText = function() return getText("UI_MSM_Settings_AINote") end,
+            r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.75,
+        })
+        ManualSave.makeButton(p, {
+            x = 14 + aiLblW + TH.GAP, y = cy, w = btnSz, h = btnSz,
+            label = "?", style = "normal",
+            onClick = function()
+                if ManualSave.openHelpScreen then ManualSave.openHelpScreen("ai_placeholders") end
+            end,
+        })
+        cy = cy + math.max(aiLbl.panel:getHeight(), btnSz) + TH.GAP
+    else
+        local warnLbl = ManualSave.makeLabel(p, {
+            x=14, y=cy, w=w-28, wrap=true,
+            getText = function() return getText("UI_MSM_Settings_ScreenshotNotAvailable") end,
+            r=TH.MUTED_R, g=TH.MUTED_G, b=TH.MUTED_B, a=0.9,
+        })
+        cy = cy + warnLbl.panel:getHeight() + TH.GAP
+    end
 
     -- Declare the exact content height so the scroll range covers the cards
     -- (whose title is drawn below their panel bounds).

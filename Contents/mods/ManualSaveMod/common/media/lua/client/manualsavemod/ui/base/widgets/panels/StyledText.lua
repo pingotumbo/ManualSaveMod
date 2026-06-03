@@ -123,6 +123,38 @@ function ManualSave.makeScrollText(parent, opts)
         return y + TH.PAD
     end
 
+    -- Returns the on-content rectangles (pre-scroll-offset) of every image
+    -- line marked zoomable=true. Used by onMouseDown to open the Lightbox.
+    local function zoomableImageRects(lines, drawW)
+        local TH = ManualSave.Theme
+        local lh = TH.FONT_HGT_SMALL + 3
+        local gapH = math.floor(TH.FONT_HGT_SMALL * 0.55)
+        local rects = {}
+        local y = TH.PAD
+        for _, ln in ipairs(lines) do
+            local text, style = ln[1], ln[2]
+            if not style or style == "" then
+                y = y + gapH
+            elseif style == "image" then
+                if y > TH.PAD then y = y + TH.GAP end
+                local imgW = drawW - TH.PAD * 2
+                local imgH = math.floor(imgW * ((text and text.aspect) or 0.4325))
+                if text and text.zoomable then
+                    table.insert(rects, { x=TH.PAD, y=y, w=imgW, h=imgH, text=text })
+                end
+                y = y + imgH + TH.GAP
+            elseif style == "header" then
+                if y > TH.PAD then y = y + TH.GAP end
+                local rows = wrappedRows(text, style, drawW)
+                y = y + lh * #rows + 1 + TH.GAP
+            else
+                local rows = wrappedRows(text, style, drawW)
+                y = y + lh * #rows
+            end
+        end
+        return rects
+    end
+
     local function drawLines(self2, lines, drawW)
         local TH   = ManualSave.Theme
         local lh   = TH.FONT_HGT_SMALL + 3
@@ -148,6 +180,25 @@ function ManualSave.makeScrollText(parent, opts)
                     local tex = frames[idx]
                     if tex then
                         self2:drawTextureScaled(tex, x2, y2, imgW, imgH, 1)
+                    end
+                end
+                -- Zoom badge overlay on hover, when the image is zoomable.
+                if text and text.zoomable then
+                    local mx = self2:getMouseX()
+                    local my = self2:getMouseY()
+                    if mx >= x2 and mx <= x2 + imgW and my >= y2 and my <= y2 + imgH then
+                        local bSz, bPad = 22, 4
+                        local bx = x2 + imgW - bSz - bPad
+                        local by = y2 + bPad
+                        self2:drawRect(bx, by, bSz, bSz, 0.55, 0, 0, 0)
+                        self2:drawRectBorder(bx, by, bSz, bSz, 0.85, 1, 1, 1)
+                        local fnt = UIFont.Medium
+                        local gw  = getTextManager():MeasureStringX(fnt, "+")
+                        local gh  = getTextManager():getFontHeight(fnt)
+                        self2:drawText("+",
+                            bx + math.floor((bSz - gw) / 2),
+                            by + math.floor((bSz - gh) / 2) - 1,
+                            1, 1, 1, 1, fnt)
                     end
                 end
                 y2 = y2 + imgH + TH.GAP
@@ -249,7 +300,31 @@ function ManualSave.makeScrollText(parent, opts)
             return true
         end,
         onMouseDown = function(_, mx, my)
-            local lines  = expandLines(opts.getLines())
+            local lines = expandLines(opts.getLines())
+            -- Zoomable images take priority: clicking one opens the Lightbox.
+            if ManualSave.openImageLightbox then
+                local rects = zoomableImageRects(lines, w - SCROLL - 2)
+                for _, r in ipairs(rects) do
+                    local sy = r.y - scrollY
+                    if mx >= r.x and mx <= r.x + r.w
+                       and my >= sy and my <= sy + r.h then
+                        local t = r.text
+                        ManualSave.openImageLightbox({
+                            getTexture = function()
+                                local frames = t.textures or {}
+                                if #frames == 0 then return nil end
+                                if #frames == 1 then return frames[1] end
+                                local fps = t.fps or 8
+                                local idx = (math.floor(imgTick / fps) % #frames) + 1
+                                return frames[idx]
+                            end,
+                            caption = t.caption,
+                        })
+                        return true
+                    end
+                end
+            end
+            -- Scrollbar drag fallback.
             local totalH = computeH(lines, w - SCROLL - 2)
             if totalH <= h then return end
             if mx < w - SCROLL then return end
