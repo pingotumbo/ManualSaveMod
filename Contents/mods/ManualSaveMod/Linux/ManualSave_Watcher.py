@@ -166,6 +166,7 @@ if _cfg_file.exists():
         pass
 
 THUMBS         = SAVES / "ManualSave_Thumbs"
+PROGRESS       = LuaDir / "ManualSave_Progress.txt"
 SCREEN_REQ     = LuaDir / "ManualSave_ScreenReq.txt"
 SCREEN_DONE    = LuaDir / "ManualSave_ScreenDone.txt"
 THUMB_PENDING  = LuaDir / "ManualSave_ThumbPending.png"
@@ -464,21 +465,105 @@ def folder_size_mb(path: Path) -> str:
         return "0"
     return f"{round(total / (1024 * 1024), 1):.1f}"   # always dot, no locale
 
+def folder_size_bytes(path: Path) -> int:
+    """Same walk as folder_size_mb but returns raw bytes, for progress totals."""
+    if not path.is_dir():
+        return 0
+    total = 0
+    for root, _, files in os.walk(path):
+        for fn in files:
+            try:
+                total += (Path(root) / fn).stat().st_size
+            except OSError:
+                pass
+    return total
+
+# ---------------------------------------------------------------------------
+# Progress reporting (v1.6.1).
+# Long-running ops drop ManualSave_Progress.txt every few hundred bytes-copied
+# (or every Nth file deleted) so the Lua HUD can show a real percentage instead
+# of sitting blank until the operation finishes. UNIT=bytes for copies,
+# UNIT=files for delete (no useful byte count).
+# ---------------------------------------------------------------------------
+def write_progress(copied: int, total: int, started: int, unit: str = "bytes") -> None:
+    if total <= 0:
+        total = 1
+    if copied < 0:
+        copied = 0
+    try:
+        PROGRESS.write_text(
+            f"STARTED={started}\nTOTAL={total}\nCOPIED={copied}\nUNIT={unit}\n",
+            encoding="ascii",
+        )
+    except OSError:
+        pass
+    # Keep heartbeat alive while a long op blocks the main loop. Without this
+    # the Lua side flips to "watcher offline" after ~2s of silence — even
+    # though the watcher is still doing useful work — and the SignalBus
+    # timeout (30s default) closes the HUD before DELETE/CLONE on a big save
+    # (e.g. The Ark in Apocalypse) can finish.
+    _heartbeat_tick()
+
+def clear_progress() -> None:
+    safe_unlink(PROGRESS)
+
 # ---------------------------------------------------------------------------
 # Tree-copy helpers. The .ps1 uses robocopy /E (merge, keep extras) and
 # /MIR (mirror, drop extras). shutil maps to that cleanly.
 # ---------------------------------------------------------------------------
-def copy_tree_merge(src: Path, dst: Path) -> bool:
-    """robocopy /E equivalent: copy src into dst, overwriting collisions,
-    keeping any pre-existing file in dst that isn't in src."""
+def _copy_tree_file_by_file(src: Path, dst: Path, progress_enabled: bool) -> bool:
+    """Walk src and copy one file at a time so we can refresh
+    ManualSave_Progress.txt as bytes accumulate. The Windows watcher hands
+    that polling job to robocopy; here we do it inline because spawning a
+    subprocess per file would be wildly slower than a single shutil call.
+
+    When progress_enabled is False this is equivalent to shutil.copytree
+    minus the recursive directory creation costs (still per-file copy);
+    callers that don't need progress (e.g. crash recovery) can pass False
+    to skip the per-file write_progress overhead."""
     try:
-        shutil.copytree(src, dst, dirs_exist_ok=True)
+        files = []
+        total = 0
+        for root, _, fnames in os.walk(src):
+            for fn in fnames:
+                p = Path(root) / fn
+                try:
+                    sz = p.stat().st_size
+                    files.append((p, sz))
+                    total += sz
+                except OSError:
+                    pass
+        if total <= 0:
+            total = 1
+        started = int(time.time())
+        if progress_enabled:
+            write_progress(0, total, started, "bytes")
+        copied = 0
+        last_pushed = 0
+        for src_file, sz in files:
+            rel = src_file.relative_to(src)
+            dst_file = dst / rel
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_file, dst_file)
+            copied += sz
+            # Throttle: push at most every ~512 KB so we don't hammer Lua's
+            # 10 Hz poll with sub-frame churn on tiny save files.
+            if progress_enabled and (copied - last_pushed >= 512 * 1024 or copied == total):
+                write_progress(copied, total, started, "bytes")
+                last_pushed = copied
+        if progress_enabled:
+            write_progress(total, total, started, "bytes")
         return True
     except OSError as e:
-        log(f"copy_tree_merge failed {src} -> {dst}: {e}")
+        log(f"_copy_tree_file_by_file failed {src} -> {dst}: {e}")
         return False
 
-def copy_tree_mirror(src: Path, dst: Path) -> bool:
+def copy_tree_merge(src: Path, dst: Path, with_progress: bool = True) -> bool:
+    """robocopy /E equivalent: copy src into dst, overwriting collisions,
+    keeping any pre-existing file in dst that isn't in src."""
+    return _copy_tree_file_by_file(src, dst, with_progress)
+
+def copy_tree_mirror(src: Path, dst: Path, with_progress: bool = True) -> bool:
     """robocopy /MIR equivalent: make dst exactly match src, removing any
     file in dst that isn't in src."""
     if dst.exists():
@@ -486,12 +571,48 @@ def copy_tree_mirror(src: Path, dst: Path) -> bool:
         except OSError as e:
             log(f"copy_tree_mirror could not clear dst {dst}: {e}")
             return False
+    return _copy_tree_file_by_file(src, dst, with_progress)
+
+def remove_tree_with_progress(path: Path) -> None:
+    """Delete an entire slot tree with a time-based progress estimate.
+
+    We deliberately do NOT measure folder size before or during the wipe:
+    on a heavily modded save (The Ark, ~5k files) a full os.walk with a
+    real-time AV (rare on Linux but common on macOS via Gatekeeper-ish
+    scanners) can take 30+ seconds, during which the main loop is blocked
+    and Lua flips to "watcher offline". Instead we spawn rm -rf as a child
+    process and fill a 0..100 percentage based on elapsed time, capped at
+    99 until the child exits."""
+    if not path.is_dir():
+        return
+    started = int(time.time())
+    started_mono = time.monotonic()
+    estimated_secs = 15
+    write_progress(0, 100, started, "pct")
     try:
-        shutil.copytree(src, dst)
-        return True
-    except OSError as e:
-        log(f"copy_tree_mirror failed {src} -> {dst}: {e}")
-        return False
+        proc = subprocess.Popen(["rm", "-rf", str(path)])
+    except OSError:
+        # rm unavailable (extremely rare): fall back to the blocking shutil
+        # call. The bar stays at 0% but the wipe still completes.
+        try: shutil.rmtree(path, ignore_errors=True)
+        except OSError: pass
+        write_progress(100, 100, started, "pct")
+        return
+    while proc.poll() is None:
+        time.sleep(0.25)
+        elapsed = time.monotonic() - started_mono
+        pct = min(99, int(100 * elapsed / estimated_secs))
+        # write_progress also bumps the heartbeat.
+        write_progress(pct, 100, started, "pct")
+    # If rm left anything behind, try once more inline and log if it
+    # really won't go.
+    if path.is_dir():
+        log(f"DELETE: rm exited {proc.returncode} but path still exists, retrying inline.")
+        try: shutil.rmtree(path, ignore_errors=True)
+        except OSError: pass
+        if path.is_dir():
+            log(f"DELETE: WARNING path could not be removed: {path}")
+    write_progress(100, 100, started, "pct")
 
 def copy_thumb_for_clone(gmode: str, world: str, old_slot: str, new_slot: str) -> None:
     """Promote the OLD slot's thumb to the NEW slot. Tries the canonical
@@ -699,7 +820,7 @@ def op_delete(p):
     slot  = p.get("SLOT")  or ""
     target = slot_backup_dir(gmode, world, slot)
     if target.is_dir():
-        shutil.rmtree(target, ignore_errors=True)
+        remove_tree_with_progress(target)
     safe_unlink(slot_thumb_file(slot))
     if THUMBS.is_dir():
         for thumb in THUMBS.glob(f"{slot}_v*.png"):
@@ -978,3 +1099,7 @@ while True:
     except Exception as e:
         log(f"Handler {action} crashed: {e!r}")
         write_done("ERROR", action, {"ERROR": "handler_crash"})
+    finally:
+        # Always nuke the progress file when an op ends so a stale percentage
+        # from the previous run can't confuse the next HUD activation.
+        clear_progress()

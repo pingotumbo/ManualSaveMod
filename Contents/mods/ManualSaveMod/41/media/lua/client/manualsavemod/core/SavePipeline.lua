@@ -84,7 +84,9 @@ local function executeSave(ctx)
         if ctx.mode == "QUICK" then
             local progressPanel = nil
             if ManualSave.openProgressPanel then
-                progressPanel = ManualSave.openProgressPanel({ label = ctx.slot })
+                progressPanel = ManualSave.openProgressPanel({
+                    label = getText("UI_MSM_Progress_Saving") .. ": " .. ctx.slot,
+                })
             end
             ManualSave.SignalBus.send("SAVE", params,
                 function(status)
@@ -119,14 +121,6 @@ local function executeSave(ctx)
                 -- vanilla Continue would fail with "save invalid".
                 params.SESSION_PRESERVE_VANILLA = "1"
             end
-            print(string.format(
-                "[MSM-FULL] FULL_SAVE ctx.slot=%s ctx.world=%s ctx.liveWorld=%s ctx.gmode=%s reenter=%s sid=%s",
-                tostring(ctx.slot), tostring(ctx.world), tostring(ctx.liveWorld),
-                tostring(ctx.gmode), tostring(ctx.reenter), tostring(sid)))
-            print(string.format(
-                "[MSM-FULL] params: SESSION_CLOSE=%s SESSION_ID=%s LIVE_WORLD=%s",
-                tostring(params.SESSION_CLOSE), tostring(params.SESSION_ID),
-                tostring(params.LIVE_WORLD)))
             local fw = getFileWriter(FULLSAVE_PENDING, true, false)
             if fw then fw:write("SLOT=" .. ctx.slot .. "\r\n"); fw:close() end
             ManualSave.SignalBus.send("SAVE", params)

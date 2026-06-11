@@ -23,21 +23,13 @@ local NAV_W = 200
 
 -- GETTING STARTED ──────────────────────────────────────────────────────────────
 
+-- Plain mod title at the top of the Help. The version badge that used to
+-- be appended here was removed because PZ caches the mod package at
+-- game-boot and would serve a stale modversion across a session, making
+-- the displayed version drift from reality. The release version is shown
+-- in the "What's New" popup instead, which has its own controlled source.
 local function modTitle()
-    if ManualSave.MOD_VERSION == "?" then
-        pcall(function()
-            local r = getModFileReader("ManualSaveMod", "mod.info", false)
-            if not r then return end
-            while true do
-                local line = r:readLine()
-                if not line then break end
-                local v = line:match("^modversion=(.-)%s*$")
-                if v and v ~= "" then ManualSave.MOD_VERSION = v; break end
-            end
-            r:close()
-        end)
-    end
-    return ManualSave.MOD_NAME .. "  v" .. ManualSave.MOD_VERSION
+    return ManualSave.MOD_NAME or "Manual Save & Slot Manager"
 end
 
 local function start_lines()

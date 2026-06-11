@@ -149,8 +149,6 @@ function ManualSave.LoadTracker.writePendingSession(slot, world, gmode, sid)
 end
 
 function ManualSave.LoadTracker.writeSession(slot, world, gmode, sid)
-    print(string.format("[MSM-SESS] writeSession slot=%s world=%s gmode=%s sid=%s",
-        tostring(slot), tostring(world), tostring(gmode), tostring(sid)))
     local w = getFileWriter(SESSION_FILE, true, false)
     if not w then return end
     w:write("SLOT="  .. slot  .. "\r\n")
@@ -186,6 +184,14 @@ function ManualSave.LoadTracker.checkReenter()
     getWorld():setGameMode(p.gameMode)
     getWorld():setWorld(p.liveWorld or p.saveName)
     MainScreen.instance:setDefaultSandboxVars()
+    -- Hide MainScreen before kicking the load (see SaveManager.load comment):
+    -- without this the menu keeps the main thread and the load only starts
+    -- after the user presses a key (the "Esc to start Load" bug).
+    local ms = MainScreen.instance
+    if ms and ms:isVisible() then
+        ms:setVisible(false)
+        ms:removeFromUIManager()
+    end
     MainScreen.continueLatestSaveAux()
 end
 
@@ -200,19 +206,9 @@ Events.OnMainMenuEnter.Add(function()
         local rfr = getFileReader(REENTER_FLAG, true)
         local reenterPending = false
         if rfr then reenterPending = rfr:readLine() ~= nil; rfr:close() end
-        print(string.format("[MSM-MENU] OnMainMenuEnter first time. reenterPending=%s",
-            tostring(reenterPending)))
         if not reenterPending then
             local s = ManualSave.LoadTracker.readSession()
-            if s then
-                print(string.format("[MSM-MENU] readSession: slot=%s world=%s gmode=%s sid=%s",
-                    tostring(s.slot), tostring(s.world), tostring(s.gmode), tostring(s.sessionId)))
-            else
-                print("[MSM-MENU] readSession: nil")
-            end
             if s and s.sessionId then
-                print(string.format("[MSM-MENU] sending SESSION_END slot=%s sid=%s",
-                    tostring(s.slot), tostring(s.sessionId)))
                 ManualSave.SignalBus.send("SESSION_END",
                     { GMODE=s.gmode, SLOT=s.slot, SESSION_ID=s.sessionId })
                 clearFile(SESSION_FILE)
@@ -226,7 +222,9 @@ Events.OnMainMenuEnter.Add(function()
     if pfData and pfData.SLOT then
         clearFile(FULLSAVE_PENDING)
         if ManualSave.openProgressPanel then
-            local panel = ManualSave.openProgressPanel({ label = pfData.SLOT })
+            local panel = ManualSave.openProgressPanel({
+                label = getText("UI_MSM_Progress_Saving") .. ": " .. pfData.SLOT,
+            })
             local doneHandler
             doneHandler = function()
                 local d = readKV(DONE_FILE)
@@ -246,6 +244,21 @@ Events.OnGameStart.Add(function()
     if ps then
         ManualSave.LoadTracker.writeSession(ps.slot, ps.world, ps.gmode, ps.sessionId)
         _session.sessionId = ps.sessionId
+        -- "Esc to start Load" bug: PZ re-shows the pause menu and keeps
+        -- gameSpeed at 0 after a mod-driven load, so the user has to dismiss
+        -- it (Esc) before the world becomes visible/interactive. Force the
+        -- pause menu closed and resume time so the world is immediately
+        -- alive. Only runs when ps is set, i.e. the load came from our
+        -- pipeline; vanilla Continue is untouched.
+        pcall(function()
+            local ms = MainScreen.instance
+            if ms and ms:isVisible() then
+                ms:setVisible(false)
+                ms:removeFromUIManager()
+            end
+        end)
+        pcall(function() setGameSpeed(1) end)
+        pcall(function() setShowPausedMessage(false) end)
     end
 end)
 

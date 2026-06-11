@@ -49,14 +49,47 @@ function ManualSave.MetaCache.listSaves()
     return saves
 end
 
--- Reads full metadata for one slot. Returns nil if the file doesn't exist.
+-- Attempts to source a clone parent from a slot name (handles "_copy",
+-- "_copy_(2)", "_copy_(7)" etc.). Returns the stripped slot name, or nil if
+-- the name does not look like a duplicate.
+---@param slot string
+---@return string?
+local function parentSlotOfCopy(slot)
+    if not slot then return nil end
+    local stripped = slot:match("^(.*)_copy_%(%d+%)$") or slot:match("^(.*)_copy$")
+    if stripped and stripped ~= "" then return stripped end
+    return nil
+end
+
+-- Forward decl: read() may invoke repair() and repair() calls write().
+local doRead
+local doRepair
+
+-- Reads full metadata for one slot. Returns nil if the file doesn't exist or
+-- if it exists but is empty/malformed AND cannot be repaired from a parent.
 ---@param gmode string
 ---@param world string
 ---@param slot  string
 ---@return table?
 function ManualSave.MetaCache.read(gmode, world, slot)
+    local data, empty = doRead(gmode, world, slot)
+    if data then return data end
+    if not empty then return nil end
+    -- File exists but produced no usable data (0 bytes or no SLOT field).
+    -- The v1.6.0 Duplicate regression on Apocalypse + The Ark left a fleet
+    -- of these on user disks; try to self-heal so old duplicates re-appear
+    -- in the Load panel instead of being silently dropped.
+    print(string.format(
+        "[ManualSaveMod] MetaCache.read: empty/malformed meta for slot=%q world=%q gmode=%q -> attempting repair",
+        slot, world, gmode))
+    if not doRepair(gmode, world, slot) then return nil end
+    data = doRead(gmode, world, slot)
+    return data
+end
+
+doRead = function(gmode, world, slot)
     local r = getFileReader(metaPath(gmode, world, slot), true)
-    if not r then return nil end
+    if not r then return nil, false end
     local data = {}
     while true do
         local line = r:readLine()
@@ -66,37 +99,94 @@ function ManualSave.MetaCache.read(gmode, world, slot)
         if k and v then data[k] = v end
     end
     r:close()
-    if not data.SLOT then return nil end
-    return data
+    -- "empty" covers both the literal 0-byte case and the "file has junk but
+    -- no SLOT field" case: both are treated as unusable and trigger self-heal
+    -- upstream.
+    if not data.SLOT then return nil, true end
+    return data, false
+end
+
+-- Writes a best-effort recovered meta file for `slot`. Returns true on success.
+-- Strategy:
+--   1) If `slot` looks like a duplicate ("..._copy", "..._copy_(N)"), copy
+--      metadata from the parent slot (with DATE refreshed to "now") so the
+--      duplicate inherits MAP/MODS/SEED/etc from the original.
+--   2) Otherwise, write a minimal stub (identity fields + DATE=now). This
+--      keeps the entry visible in the Load panel even if all detail is lost.
+doRepair = function(gmode, world, slot)
+    local parent = parentSlotOfCopy(slot)
+    if parent then
+        local parentMeta = doRead(gmode, world, parent)
+        if parentMeta then
+            parentMeta.SLOT = slot
+            parentMeta.DATE = os.date("%d %b %Y %H:%M")
+            if ManualSave.MetaCache.write(gmode, world, slot, parentMeta) then
+                print(string.format(
+                    "[ManualSaveMod] MetaCache.repair: rebuilt %q from parent %q",
+                    slot, parent))
+                return true
+            end
+        end
+    end
+    -- Last resort: minimal stub so the slot is at least visible.
+    local stub = {
+        DATE = os.date("%d %b %Y %H:%M"),
+        TYPE = "FULL",
+        MAP  = "",
+        MODS = "",
+    }
+    if ManualSave.MetaCache.write(gmode, world, slot, stub) then
+        print(string.format("[ManualSaveMod] MetaCache.repair: wrote stub for %q", slot))
+        return true
+    end
+    return false
 end
 
 -- Writes (or overwrites) metadata for one slot.
--- data fields are all optional; identity (gmode/world/slot) always written.
+-- Atomic-style: builds the entire file content as ONE string up-front, then
+-- emits a SINGLE w:write() call. This avoids the v1.6.0 regression where a
+-- mid-write crash (long MAP/MODS lines on some saves, e.g. The Ark in
+-- Apocalypse) left the meta file truncated to 0 bytes: getFileWriter opens
+-- the target in truncate mode, so a partial w:write sequence could exit the
+-- function with the on-disk file at any size between 0 and the full payload.
+-- Single-shot writes make the file either complete or untouched.
 ---@param gmode string
 ---@param world string
 ---@param slot  string
 ---@param data  table
 function ManualSave.MetaCache.write(gmode, world, slot, data)
+    local d     = data or {}
+    local lines = {}
+    local function add(k, v) lines[#lines + 1] = k .. "=" .. tostring(v or "") end
+    add("DATE",    d.DATE or os.date("%d %b %Y %H:%M"))
+    add("TYPE",    d.TYPE or "FULL")
+    add("GMODE",   gmode)
+    add("WORLD",   world)
+    add("SLOT",    slot)
+    add("MAP",     d.MAP or "")
+    add("MODS",    d.MODS or "")
+    add("MOD_IDS", d.MOD_IDS or "")
+    if d.DAY        then add("DAY",        d.DAY)        end
+    if d.PLAYTIME   then add("PLAYTIME",   d.PLAYTIME)   end
+    if d.SEED       then add("SEED",       d.SEED)       end
+    if d.SIZE       then add("SIZE",       d.SIZE)       end
+    if d.SOURCE     then add("SOURCE",     d.SOURCE)     end
+    if d.THUMB_FILE then add("THUMB_FILE", d.THUMB_FILE) end
+    local payload = table.concat(lines, "\r\n") .. "\r\n"
+
     local w = getFileWriter(metaPath(gmode, world, slot), true, false)
     if not w then
-        print("[ManualSaveMod] MetaCache: ERROR — could not write meta for " .. slot)
+        print("[ManualSaveMod] MetaCache.write: getFileWriter returned nil for " .. slot)
         return false
     end
-    local d = data or {}
-    w:write("DATE="  .. (d.DATE  or os.date("%d %b %Y %H:%M")) .. "\r\n")
-    w:write("TYPE="  .. (d.TYPE  or "FULL")  .. "\r\n")
-    w:write("GMODE=" .. gmode                .. "\r\n")
-    w:write("WORLD=" .. world                .. "\r\n")
-    w:write("SLOT="  .. slot                 .. "\r\n")
-    w:write("MAP="   .. (d.MAP   or "")      .. "\r\n")
-    w:write("MODS="    .. (d.MODS    or "") .. "\r\n")
-    w:write("MOD_IDS=" .. (d.MOD_IDS or "") .. "\r\n")
-    if d.DAY      then w:write("DAY="      .. d.DAY      .. "\r\n") end
-    if d.PLAYTIME then w:write("PLAYTIME=" .. d.PLAYTIME .. "\r\n") end
-    if d.SEED     then w:write("SEED="     .. d.SEED     .. "\r\n") end
-    if d.SIZE     then w:write("SIZE="     .. d.SIZE     .. "\r\n") end
-    if d.SOURCE   then w:write("SOURCE="   .. d.SOURCE   .. "\r\n") end
+    local ok, err = pcall(function() w:write(payload) end)
     w:close()
+    if not ok then
+        print(string.format(
+            "[ManualSaveMod] MetaCache.write: w:write failed for slot=%q (%d bytes), err=%s",
+            slot, #payload, tostring(err)))
+        return false
+    end
     return true
 end
 

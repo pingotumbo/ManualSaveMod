@@ -222,7 +222,9 @@ Events.OnMainMenuEnter.Add(function()
     if pfData and pfData.SLOT then
         clearFile(FULLSAVE_PENDING)
         if ManualSave.openProgressPanel then
-            local panel = ManualSave.openProgressPanel({ label = pfData.SLOT })
+            local panel = ManualSave.openProgressPanel({
+                label = getText("UI_MSM_Progress_Saving") .. ": " .. pfData.SLOT,
+            })
             local doneHandler
             doneHandler = function()
                 local d = readKV(DONE_FILE)

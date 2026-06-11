@@ -18,9 +18,10 @@
 ManualSave        = ManualSave or {}
 ManualSave.SignalBus = ManualSave.SignalBus or {}
 
-local SIGNAL_FILE = "ManualSave_Signal.txt"
-local DONE_FILE   = "ManualSave_Done.txt"
-local HB_FILE     = "ManualSave_Heartbeat.txt"
+local SIGNAL_FILE   = "ManualSave_Signal.txt"
+local DONE_FILE     = "ManualSave_Done.txt"
+local HB_FILE       = "ManualSave_Heartbeat.txt"
+local PROGRESS_FILE = "ManualSave_Progress.txt"
 
 local _pending  = nil   -- { action, onDone, timeout, tick }
 local _hbTick   = 0
@@ -49,11 +50,44 @@ local function parseDone()
     return data
 end
 
+-- Reads only the COPIED= field of ManualSave_Progress.txt and returns it as
+-- a raw string (we just compare for changes — no need to parse). The watcher
+-- writes this file every ~250 ms during long ops, so a changed value proves
+-- the operation is alive even if it takes minutes to complete.
+local function readProgressCopied()
+    local r = getFileReader(PROGRESS_FILE, true)
+    if not r then return nil end
+    local found
+    while true do
+        local line = r:readLine()
+        if line == nil then break end
+        local v = line:match("^%s*COPIED%s*=%s*(.+)$")
+        if v then found = v; break end
+    end
+    r:close()
+    return found
+end
+
 -- Single always-on poll: handles both pending-signal checks and heartbeat.
 local function poll()
     -- ── Signal polling (only when a send() is waiting for a response) ──
     if _pending then
         _pending.tick = _pending.tick + 1
+
+        -- Reset the timeout window every time the watcher's Progress file
+        -- shows new bytes copied. A 90 MB SAVE on a slow HDD with Defender
+        -- can take 60+ seconds — well past the 30 s default — but as long
+        -- as the bar is moving the user clearly isn't stuck, and timing out
+        -- here would leave the HUD half-finished while the watcher kept
+        -- working in the background.
+        if _pending.tick % 30 == 0 then  -- ~0.5 s at 60 fps
+            local copied = readProgressCopied()
+            if copied and copied ~= _pending.lastCopied then
+                _pending.lastCopied = copied
+                _pending.tick       = 0
+            end
+        end
+
         local done = parseDone()
         if done then
             if done.ACTION and done.ACTION ~= _pending.action then return end

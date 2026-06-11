@@ -379,7 +379,7 @@ function ManualSave.openImportScreen(joypadData)
                 phase = "error"; errMsg = getText("UI_MSM_Import_ErrQueueFile"); return
             end
             local progressPanel = ManualSave.openProgressPanel and
-                ManualSave.openProgressPanel({ label = getText("UI_MSM_Import_BtnImport") }) or nil
+                ManualSave.openProgressPanel({ label = getText("UI_MSM_Progress_Importing") }) or nil
             _importing = true; _screen = nil; d.close()
             ManualSave.SignalBus.send("IMPORT", nil, function(status)
                 _importing = false

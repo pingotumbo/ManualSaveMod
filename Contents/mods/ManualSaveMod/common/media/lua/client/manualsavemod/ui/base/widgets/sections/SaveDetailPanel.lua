@@ -68,10 +68,31 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
             ManualSave.SaveManager.delete(m.GMODE or m.gameMode, m.WORLD or m.world, m.slot,
                     function(status)
                         if status ~= "OK" then return end
+                        -- Match across both lowercase and UPPERCASE forms:
+                        -- duplicated rows and self-healed meta entries can
+                        -- end up with only one casing populated, and a strict
+                        -- b.slot == m.slot AND b.world == m.world would miss
+                        -- them — the row would then linger in the list until
+                        -- the user closed and reopened the Load screen.
+                        local mWorld = m.world or m.WORLD or ""
+                        local mSlot  = m.slot  or m.SLOT  or ""
+                        local mGmode = m.gameMode or m.GMODE or ""
+                        local removed = false
                         for i, b in ipairs(st.saves) do
-                            if b.slot == m.slot and b.world == (m.world or m.WORLD) then
-                                table.remove(st.saves, i); break
+                            if (b.slot or b.SLOT or "") == mSlot
+                               and (b.world or b.WORLD or "") == mWorld
+                               and (b.gameMode or b.GMODE or "") == mGmode then
+                                table.remove(st.saves, i)
+                                removed = true
+                                break
                             end
+                        end
+                        if not removed then
+                            -- Belt-and-suspenders: rebuild the cache from the
+                            -- on-disk index so the deleted row never lingers
+                            -- regardless of which casing combination the
+                            -- selected item happened to carry.
+                            st.saves = ManualSave.SaveManager.listSaves()
                         end
                         st.selected = nil; st.selectedThumb = nil; st.selectedMods = {}
                         local ls = ManualSave.LoadScreen
@@ -129,7 +150,11 @@ function ManualSave.makeSaveDetailPanel(parent, opts)
                         if status ~= "OK" then return end
                         local copy = {}
                         for k, v in pairs(old) do copy[k] = v end
+                        -- See SaveOps.lua: keep both casings of the slot id
+                        -- in sync so the duplicate's metadata renders with
+                        -- its own name, not the original's.
                         copy.slot = newName
+                        copy.SLOT = newName
                         copy.DATE = (result and result.DATE) or os.date("%d %b %Y %H:%M")
                         table.insert(st.saves, copy)
                         ManualSave.LoadScreen.applyFilter()

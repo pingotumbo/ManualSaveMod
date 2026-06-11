@@ -56,11 +56,9 @@ function ManualSave.makeTextBlock(parent, opts)
         return #result > 0 and result or { text }
     end
 
-    -- Expand raw lines: split on \n, then word-wrap indented styles.
+    -- Expand raw lines: split on \n, then word-wrap using the style's indent.
     local function expandLines(rawLines, availW)
-        local indW  = availW - 8   -- body / dim / warn / good
-        local indW2 = availW - 14  -- callout / check
-        local out   = {}
+        local out = {}
         for _, ln in ipairs(rawLines) do
             local text, style = ln[1], ln[2]
             local segments = {}
@@ -69,12 +67,11 @@ function ManualSave.makeTextBlock(parent, opts)
             end
             for _, seg in ipairs(segments) do
                 local wrapped
-                if doWrap and (style == "body" or style == "dim"
-                    or style == "warn" or style == "good") then
-                    wrapped = wrapLine(UIFont.Small, seg, indW)
-                elseif doWrap and (style == "callout" or style == "callout_w"
-                    or style == "callout_g" or style == "check") then
-                    wrapped = wrapLine(UIFont.Small, seg, indW2)
+                local s = style and ManualSave.Styles[style]
+                if doWrap and s then
+                    local font  = s.font or UIFont.Small
+                    local indW  = availW - (s.indent or 0)
+                    wrapped = wrapLine(font, seg, indW)
                 else
                     wrapped = { seg }
                 end

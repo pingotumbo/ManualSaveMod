@@ -27,6 +27,30 @@ local BAR_H         = 3
 
 -- ── Progress file reader ──────────────────────────────────────────────────────
 
+-- Truncate `text` so it fits within `maxWidth` pixels in `font`, appending
+-- "..." when characters had to be dropped. Used by the HUD to keep the
+-- left-aligned slot label from overlapping the right-aligned byte counter
+-- when world+slot strings are long (e.g. The Ark's
+-- "ARK_v1.10.9_2026-06-07_16-33-55_<slot>").
+local function truncateToWidth(text, font, maxWidth)
+    if not text or text == "" or maxWidth <= 0 then return "" end
+    local tm = getTextManager()
+    if tm:MeasureStringX(font, text) <= maxWidth then return text end
+    local ellipsis  = "..."
+    local ellipsisW = tm:MeasureStringX(font, ellipsis)
+    if maxWidth <= ellipsisW then return ellipsis end
+    local lo, hi = 1, #text
+    while lo < hi do
+        local mid = math.floor((lo + hi + 1) / 2)
+        if tm:MeasureStringX(font, text:sub(1, mid) .. ellipsis) <= maxWidth then
+            lo = mid
+        else
+            hi = mid - 1
+        end
+    end
+    return text:sub(1, lo) .. ellipsis
+end
+
 local function formatBytes(b)
     if b >= 1073741824 then
         return string.format("%.2f GB", b / 1073741824)
@@ -54,7 +78,12 @@ local function readProgress()
     local copied = tonumber(data.COPIED)
     local total  = tonumber(data.TOTAL)
     if not copied or not total then return nil end
-    return { copied=copied, total=total, started=tonumber(data.STARTED) }
+    return {
+        copied  = copied,
+        total   = total,
+        started = tonumber(data.STARTED),
+        unit    = data.UNIT or "bytes",
+    }
 end
 
 -- ── openProgressPanel ─────────────────────────────────────────────────────────
@@ -164,15 +193,24 @@ function ManualSave.openProgressPanel(opts)
             end
         end
 
-        -- Slot label (white) with 1px drop shadow
-        local labelText = opts.label or ""
+        -- Counter (right-aligned) measured first so we know how much room the
+        -- label can take without overlapping it. 10 px gap between the two
+        -- prevents glyphs touching at the boundary.
+        local ctW, ctX = 0, W - PAD_RIGHT
+        if counterText ~= "" then
+            ctW = getTextManager():MeasureStringX(UIFont.Small, counterText)
+            ctX = W - PAD_RIGHT - ctW
+        end
+        local labelMaxW = ctX - contentX - 10
+        if counterText == "" then labelMaxW = W - PAD_RIGHT - contentX end
+
+        -- Slot label (white) with 1px drop shadow, truncated to labelMaxW.
+        local labelText = truncateToWidth(opts.label or "", UIFont.Small, labelMaxW)
         self2:drawText(labelText, contentX + 1, labelY + 1, 0, 0, 0, 0.75, UIFont.Small)
         self2:drawText(labelText, contentX,     labelY,     1, 1, 1, 1,    UIFont.Small)
 
         -- Counter text (dim, right-aligned) with drop shadow
         if counterText ~= "" then
-            local ctW = getTextManager():MeasureStringX(UIFont.Small, counterText)
-            local ctX = W - PAD_RIGHT - ctW
             self2:drawText(counterText, ctX + 1, labelY + 1, 0,    0,    0,    0.75, UIFont.Small)
             self2:drawText(counterText, ctX,     labelY,     0.84, 0.80, 0.76, 0.70, UIFont.Small)
         end
@@ -211,6 +249,18 @@ function ManualSave.openProgressPanel(opts)
             spinnerIdx = (spinnerIdx % nFrames) + 1
         end
 
+        -- HUD must stay on top: clicking another row in the Load list
+        -- causes PZ to bring the clicked panel forward in the UIManager
+        -- stack, pushing this standalone HUD behind it. bringToTop() every
+        -- few frames forces the HUD to repaint above whatever PZ just
+        -- promoted. Cheap (no allocation), safe to spam.
+        if frames % 4 == 0 then
+            pcall(function()
+                if panel.bringToTop then panel:bringToTop() end
+                if panel.setVisible then panel:setVisible(true) end
+            end)
+        end
+
         if frames % POLL_EVERY ~= 0 then return end
         local prog = readProgress()
         if prog then
@@ -219,15 +269,29 @@ function ManualSave.openProgressPanel(opts)
             if prog.started and not startedEpoch then startedEpoch = prog.started end
             pct = (total > 0) and math.min(1, copied / total) or 0
             if total > 0 then
-                counterText = formatBytes(copied) .. " / " .. formatBytes(total)
-                if startedEpoch and copied > 0 then
-                    local elapsed = os.time() - startedEpoch
-                    if elapsed > 0 then
-                        local speedBps = copied / elapsed
-                        local spdStr   = formatBytes(math.floor(speedBps)) .. "/s"
-                        local eta      = (speedBps > 0 and total > copied)
-                            and math.ceil((total - copied) / speedBps) or nil
-                        speedText = eta and (spdStr .. "  |  " .. eta .. "s") or spdStr
+                if prog.unit == "pct" then
+                    -- "pct" mode is used by DELETE: the watcher can't cheaply
+                    -- measure deleted bytes during a big modded-save wipe, so
+                    -- it feeds a 0..100 time-based estimate. Show it as a
+                    -- bare percentage and skip the speed/ETA line entirely.
+                    counterText = string.format("%d%%", copied)
+                    speedText   = ""
+                elseif prog.unit == "files" then
+                    -- "files" mode kept for compatibility — falls back to the
+                    -- localized "M of N files" counter, no speed/ETA.
+                    counterText = getText("UI_MSM_Progress_Counter", copied, total)
+                    speedText   = ""
+                else
+                    counterText = formatBytes(copied) .. " / " .. formatBytes(total)
+                    if startedEpoch and copied > 0 then
+                        local elapsed = os.time() - startedEpoch
+                        if elapsed > 0 then
+                            local speedBps = copied / elapsed
+                            local spdStr   = formatBytes(math.floor(speedBps)) .. "/s"
+                            local eta      = (speedBps > 0 and total > copied)
+                                and math.ceil((total - copied) / speedBps) or nil
+                            speedText = eta and (spdStr .. "  |  " .. eta .. "s") or spdStr
+                        end
                     end
                 end
             else

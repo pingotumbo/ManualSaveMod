@@ -159,11 +159,17 @@ function ManualSave.makeSaveList(parent, opts)
         panel:drawRect(x, y + h - 1, w, 1, 1, TH2.LINE_R, TH2.LINE_G, TH2.LINE_B)
         local label = (item.gameMode or "")
         if (item.world or "") ~= "" then label = label .. "  |  " .. item.world end
-        panel:drawText(label, x + 14, y + 8, TH2.MUTED_R, TH2.MUTED_G, TH2.MUTED_B, 1, UIFont.Small)
         local dateStr = item.DATE or ""
+        -- Measure the date first so the gmode|world label can be truncated to
+        -- the remaining row width instead of bleeding under the right-aligned
+        -- date (regression seen with long world names such as
+        -- "ARK_v1.10.9_2026-06-07_16-33-55" overlapping the timestamp).
+        local dateW = (dateStr ~= "") and getTextManager():MeasureStringX(UIFont.Small, dateStr) or 0
+        local labelMaxW = w - 28 - (dateW > 0 and (dateW + 10) or 0)
+        panel:drawText(truncatePx(UIFont.Small, label, labelMaxW),
+            x + 14, y + 8, TH2.MUTED_R, TH2.MUTED_G, TH2.MUTED_B, 1, UIFont.Small)
         if dateStr ~= "" then
-            local dw = getTextManager():MeasureStringX(UIFont.Small, dateStr)
-            panel:drawText(dateStr, x + w - dw - 14, y + 8, TH2.DIM_R, TH2.DIM_G, TH2.DIM_B, 1, UIFont.Small)
+            panel:drawText(dateStr, x + w - dateW - 14, y + 8, TH2.DIM_R, TH2.DIM_G, TH2.DIM_B, 1, UIFont.Small)
         end
         local tag, style
         if item.SOURCE == "NATIVE" then

@@ -49,7 +49,9 @@ function ManualSave.makeSaveActions(parent, opts)
                     exportName = sanitize(exportName)
                     if exportName == "" then return end
                     local progressPanel = ManualSave.openProgressPanel and
-                        ManualSave.openProgressPanel({ label = exportName }) or nil
+                        ManualSave.openProgressPanel({
+                            label = getText("UI_MSM_Progress_Exporting") .. ": " .. exportName,
+                        }) or nil
                     ManualSave.SignalBus.send("EXPORT_VANILLA",
                         { GMODE=m2.GMODE or m2.gameMode, WORLD=m2.WORLD or m2.world, SLOT=m2.slot, EXPORT_NAME=exportName },
                         function(status)
@@ -106,14 +108,27 @@ function ManualSave.makeSaveActions(parent, opts)
                     local old = st.selected
                     ManualSave.SaveManager.clone(old.GMODE or old.gameMode,
                         old.WORLD or old.world, old.slot, newName,
-                        function(status)
-                            if status == "OK" then
-                                local copy = {}
-                                for k, v in pairs(old) do copy[k] = v end
-                                copy.slot = newName
-                                table.insert(st.saves, copy)
-                                ManualSave.LoadScreen.applyFilter()
-                            end
+                        function(status, result)
+                            if status ~= "OK" then return end
+                            local copy = {}
+                            for k, v in pairs(old) do copy[k] = v end
+                            -- Update both casings of the slot identifier: the
+                            -- lowercase `slot` is used by the index/lookup
+                            -- code, the uppercase `SLOT` is the meta-file
+                            -- field rendered in the detail view. Forgetting
+                            -- the uppercase one made the duplicate inherit
+                            -- the OLD slot's metadata visually.
+                            copy.slot = newName
+                            copy.SLOT = newName
+                            -- Use the fresh DATE the watcher returned so the
+                            -- duplicate sorts as the newest entry (sortMode
+                            -- defaults to "date" descending) instead of
+                            -- inheriting the original's timestamp and
+                            -- collapsing into the same sort position.
+                            copy.DATE = (result and result.DATE)
+                                or os.date("%d %b %Y %H:%M")
+                            table.insert(st.saves, copy)
+                            ManualSave.LoadScreen.applyFilter()
                         end)
                 end,
             })
@@ -189,6 +204,17 @@ function ManualSave.makeSaveActions(parent, opts)
         label=getText("UI_MSM_Ops_BtnEditMods"), style="danger",
         groups={"bat_required"},
         onClick = function()
+            -- v1.6.1: Edit Mods is temporarily disabled while we rework the
+            -- duplicate-with-removed-mods flow. Surface a maintenance dialog
+            -- instead of opening the (currently broken) editor; the rest of
+            -- the openEditModsScreen wiring is kept intact below so the
+            -- button comes back online in a future patch with a one-line
+            -- revert.
+            ManualSave.openInfoDialog({
+                title = getText("UI_MSM_EditMods_MaintenanceTitle"),
+                body  = getText("UI_MSM_EditMods_MaintenanceBody"),
+            })
+            if true then return end
             if ManualSave._progressActive then return end
             if ManualSave.SignalBus.isBatAlive() == false then return end
             if not st.selected then return end

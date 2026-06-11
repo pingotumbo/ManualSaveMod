@@ -6,6 +6,57 @@
 ManualSave            = ManualSave or {}
 ManualSave.SaveManager = ManualSave.SaveManager or {}
 
+-- ── Progress HUD helpers ──────────────────────────────────────────────────────
+-- v1.6.1: every long-running op (LOAD, DELETE, RENAME, CLONE) now opens the
+-- shared bottom HUD with a localized "<op>: <slot>" label so the user sees
+-- which operation is running, not just a slot name in a vacuum.
+
+-- Build the label that goes on the left of the HUD. opKey is the EN/IT
+-- "Loading"/"Deleting"/etc. string; slotLabel is the slot the op applies to.
+---@param opKey string
+---@param slotLabel string?
+---@return string
+local function opLabel(opKey, slotLabel)
+    local txt = getText(opKey)
+    if slotLabel and slotLabel ~= "" then
+        return txt .. ": " .. slotLabel
+    end
+    return txt
+end
+
+-- Opens the progress HUD or returns nil if the panel module isn't loaded yet.
+---@param opKey string
+---@param slotLabel string?
+local function openOpProgress(opKey, slotLabel)
+    if not ManualSave.openProgressPanel then return nil end
+    return ManualSave.openProgressPanel({ label = opLabel(opKey, slotLabel) })
+end
+
+-- Standard "fade out the HUD after Done" closer. On success we keep the Done
+-- frame on screen for ~80 render ticks (≈1.3 s @ 60 fps) so the user clearly
+-- sees the operation finished before the HUD disappears; on error we close
+-- immediately.
+local function completeOpProgress(panel, status, after)
+    if not panel then if after then pcall(after) end; return end
+    if status == "OK" then
+        pcall(panel.showDone)
+        local t = 0
+        local closeH
+        closeH = function()
+            t = t + 1
+            if t >= 80 then
+                Events.OnRenderTick.Remove(closeH)
+                pcall(panel.close)
+                if after then pcall(after) end
+            end
+        end
+        Events.OnRenderTick.Add(closeH)
+    else
+        pcall(panel.close)
+        if after then pcall(after) end
+    end
+end
+
 -- ── Public: save ──────────────────────────────────────────────────────────────
 
 ---@param slotName string
@@ -32,6 +83,11 @@ end
 ---@param onDone fun(status:string)?
 function ManualSave.SaveManager.load(gmode, world, slot, onDone)
     local LT = ManualSave.LoadTracker
+    -- HUD: opens immediately so the user sees feedback during the watcher
+    -- restore + (when in-game) the quit/restart round-trip. From the menu the
+    -- panel is closed in the success branch below; from in-game the game is
+    -- about to quit so it dies with the process either way.
+    local panel = openOpProgress("UI_MSM_Progress_Loading", slot)
     -- "in game" means there's a live player object — i.e. a world is currently
     -- loaded. Do NOT use MainScreen.instance:isVisible() here: as soon as we
     -- added the sub-screen pattern, MainScreen stays visible behind the pause
@@ -74,53 +130,60 @@ function ManualSave.SaveManager.load(gmode, world, slot, onDone)
         "LOAD",
         { GMODE=gmode, WORLD=world, SLOT=slot },
         function(status, result)
-            if status == "OK" then
-                LT.setSession(world, gmode, slot, result and result.SESSION_ID)
-
-                local ok, liveWorld = pcall(function()
-                    return getWorld() and getWorld():getWorld()
-                end)
-                if inGame then
-                    -- ALWAYS restart PZ when the user triggers a Load from
-                    -- in-game (not just when reloading the same world). Without
-                    -- this, the in-VM transition (setWorld + continueLatestSaveAux)
-                    -- races with the watcher's SESSION_END: the watcher deletes
-                    -- the leaving world's vanilla folder while PZ is still
-                    -- finishing IngameState.exit (animals removeFromWorld,
-                    -- chunk cleanup, ...). The corruption surfaces as a
-                    -- downstream NPE such as AnimalDefinitions.getDef and PZ
-                    -- crashes. Quitting first guarantees PZ has zero handles
-                    -- on the old folder by the time SESSION_END deletes it.
-                    --
-                    -- save(true) only on same-world: it preserves the just
-                    -- restored backup from being overwritten by stale in-memory
-                    -- state on quit. For a different world we leave the
-                    -- current one alone.
-                    if ok and liveWorld == slot then
-                        pcall(save, true)
-                    end
-                    LT.clearSessionFile()
-                    LT.writePendingLoad(slot, gmode, world)
-                    if onDone then pcall(onDone, status) end
-                    getCore():quit()
-                    return
-                end
-
-                LT.writePendingSession(slot, world, gmode, result and result.SESSION_ID)
-                getWorld():setGameMode(gmode)
-                getWorld():setWorld(slot)
-                MainScreen.instance:setDefaultSandboxVars()
-                -- Hide MainScreen before kicking the load: PZ otherwise keeps
-                -- the menu drawing on the main thread and continueLatestSaveAux
-                -- gets queued but never picked up until the user presses any
-                -- input (the "Esc to start Load" bug).
-                local ms = MainScreen.instance
-                if ms and ms:isVisible() then
-                    ms:setVisible(false)
-                    ms:removeFromUIManager()
-                end
-                MainScreen.continueLatestSaveAux()
+            if status ~= "OK" then
+                if panel then pcall(panel.close) end
+                if onDone then pcall(onDone, status) end
+                return
             end
+            LT.setSession(world, gmode, slot, result and result.SESSION_ID)
+
+            local ok, liveWorld = pcall(function()
+                return getWorld() and getWorld():getWorld()
+            end)
+            if inGame then
+                -- ALWAYS restart PZ when the user triggers a Load from
+                -- in-game (not just when reloading the same world). Without
+                -- this, the in-VM transition (setWorld + continueLatestSaveAux)
+                -- races with the watcher's SESSION_END: the watcher deletes
+                -- the leaving world's vanilla folder while PZ is still
+                -- finishing IngameState.exit (animals removeFromWorld,
+                -- chunk cleanup, ...). The corruption surfaces as a
+                -- downstream NPE such as AnimalDefinitions.getDef and PZ
+                -- crashes. Quitting first guarantees PZ has zero handles
+                -- on the old folder by the time SESSION_END deletes it.
+                --
+                -- save(true) only on same-world: it preserves the just
+                -- restored backup from being overwritten by stale in-memory
+                -- state on quit. For a different world we leave the
+                -- current one alone.
+                if ok and liveWorld == slot then
+                    pcall(save, true)
+                end
+                LT.clearSessionFile()
+                LT.writePendingLoad(slot, gmode, world)
+                if onDone then pcall(onDone, status) end
+                -- HUD stays up until getCore():quit() tears the process down.
+                getCore():quit()
+                return
+            end
+
+            LT.writePendingSession(slot, world, gmode, result and result.SESSION_ID)
+            getWorld():setGameMode(gmode)
+            getWorld():setWorld(slot)
+            MainScreen.instance:setDefaultSandboxVars()
+            -- Hide MainScreen before kicking the load: PZ otherwise keeps
+            -- the menu drawing on the main thread and continueLatestSaveAux
+            -- gets queued but never picked up until the user presses any
+            -- input (the "Esc to start Load" bug).
+            local ms = MainScreen.instance
+            if ms and ms:isVisible() then
+                ms:setVisible(false)
+                ms:removeFromUIManager()
+            end
+            MainScreen.continueLatestSaveAux()
+            -- Menu path: the new world will start drawing in a few frames; let
+            -- the Done frame flash for the standard ~1.3s before tearing down.
+            completeOpProgress(panel, "OK", nil)
             if onDone then pcall(onDone, status) end
         end
     )
@@ -133,8 +196,13 @@ end
 ---@param slot   string
 ---@param onDone fun(status:string)?
 function ManualSave.SaveManager.delete(gmode, world, slot, onDone)
+    local panel = openOpProgress("UI_MSM_Progress_Deleting", slot)
     ManualSave.SignalBus.send("DELETE", { GMODE=gmode, WORLD=world, SLOT=slot },
-        function(status, _) if onDone then pcall(onDone, status) end end)
+        function(status, _)
+            completeOpProgress(panel, status, function()
+                if onDone then pcall(onDone, status) end
+            end)
+        end)
 end
 
 ---@param gmode   string
@@ -143,13 +211,16 @@ end
 ---@param newSlot string
 ---@param onDone  fun(status:string)?
 function ManualSave.SaveManager.rename(gmode, world, oldSlot, newSlot, onDone)
+    local panel = openOpProgress("UI_MSM_Progress_Renaming", newSlot)
     ManualSave.SignalBus.send("RENAME",
         { GMODE=gmode, WORLD=world, OLD_SLOT=oldSlot, NEW_SLOT=newSlot },
         function(status, _)
             if status == "OK" then
                 ManualSave.MetaCache.copy(gmode, world, oldSlot, newSlot, false)
             end
-            if onDone then pcall(onDone, status) end
+            completeOpProgress(panel, status, function()
+                if onDone then pcall(onDone, status) end
+            end)
         end)
 end
 
@@ -159,9 +230,7 @@ end
 ---@param newSlot string
 ---@param onDone  fun(status:string, result:table?)?
 function ManualSave.SaveManager.clone(gmode, world, oldSlot, newSlot, onDone)
-    local progressPanel = ManualSave.openProgressPanel and
-        ManualSave.openProgressPanel({ label = newSlot }) or nil
-
+    local panel = openOpProgress("UI_MSM_Progress_Duplicating", newSlot)
     ManualSave.SignalBus.send("CLONE",
         { GMODE=gmode, WORLD=world, OLD_SLOT=oldSlot, NEW_SLOT=newSlot },
         function(status, result)
@@ -169,27 +238,9 @@ function ManualSave.SaveManager.clone(gmode, world, oldSlot, newSlot, onDone)
                 ManualSave.MetaCache.copy(gmode, world, oldSlot, newSlot, true,
                     result and result.DATE)
             end
-            if progressPanel then
-                if status == "OK" then
-                    pcall(progressPanel.showDone)
-                    local t = 0
-                    local closeH
-                    closeH = function()
-                        t = t + 1
-                        if t >= 80 then
-                            Events.OnRenderTick.Remove(closeH)
-                            pcall(progressPanel.close)
-                            if onDone then pcall(onDone, status, result) end
-                        end
-                    end
-                    Events.OnRenderTick.Add(closeH)
-                else
-                    pcall(progressPanel.close)
-                    if onDone then pcall(onDone, status, result) end
-                end
-            else
+            completeOpProgress(panel, status, function()
                 if onDone then pcall(onDone, status, result) end
-            end
+            end)
         end)
 end
 

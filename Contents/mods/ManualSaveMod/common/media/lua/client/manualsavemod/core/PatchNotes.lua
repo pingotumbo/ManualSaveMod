@@ -27,7 +27,7 @@ ManualSave.PatchNotes.LINUX_FEEDBACK_URL  = "https://steamcommunity.com/workshop
 -- !!! REMEMBER !!! When you bump mod.info modversion for a release, bump
 -- this constant too. The optional check below logs a warning to console
 -- when the two are out of sync so you catch the mistake at boot.
-ManualSave.PatchNotes.VERSION = "1.6.0"
+ManualSave.PatchNotes.VERSION = "1.6.1"
 
 ---@return string
 function ManualSave.PatchNotes.version()

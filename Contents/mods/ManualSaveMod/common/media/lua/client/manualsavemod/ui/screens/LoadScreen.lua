@@ -253,12 +253,24 @@ function ManualSave.LoadScreen.updateWarnArea()
     if not ls._screen or not ls._warnLabel then return end
     local offline    = ManualSave.SignalBus.isBatAlive() == false
     local busy       = ManualSave._progressActive == true
+    -- v1.6.1: a signal is in flight (DELETE/CLONE/LOAD/...) but the HUD has
+    -- already completed its Done flash and closed, so _progressActive is
+    -- false; without this distinction the warning row flips to "Watcher
+    -- offline" between the HUD closing and the watcher writing the index
+    -- update, which is misleading and locks the user out of obvious actions.
+    local pending    = ManualSave.SignalBus.isPending and ManualSave.SignalBus.isPending() == true
     local warnHidden = ManualSave.Config.get("SHOW_WATCHER_WARN") == "0"
-    local show       = busy or (offline and not warnHidden)
+    local show       = busy or pending or (offline and not warnHidden)
     ls._warnLabel.setVisible(show)
-    ls._warnLabel.setText(busy
-        and getText("UI_MSM_Common_WarnBusy")
-        or  getText("UI_MSM_Common_WarnOffline"))
+    local label
+    if busy then
+        label = "UI_MSM_Common_WarnBusy"
+    elseif pending then
+        label = "UI_MSM_Common_WarnProcessing"
+    else
+        label = "UI_MSM_Common_WarnOffline"
+    end
+    ls._warnLabel.setText(getText(label))
 end
 
 -- Shows a confirmation dialog before loading. Closes LoadScreen on confirm.

@@ -90,6 +90,7 @@ if (Test-Path $_cfgFile) {
     }
 }
 $THUMBS        = "$ZomboidRoot\Saves\ManualSave_Thumbs"
+$PROGRESS      = "$LuaDir\ManualSave_Progress.txt"
 $SCREEN_REQ    = "$LuaDir\ManualSave_ScreenReq.txt"
 $SCREEN_DONE   = "$LuaDir\ManualSave_ScreenDone.txt"
 $SCREEN_LOG    = "$LuaDir\ManualSave_ScreenLog.txt"
@@ -359,6 +360,138 @@ function Get-FolderSizeMB($path) {
     return "0"
 }
 
+# ── Progress reporting ───────────────────────────────────────
+# v1.6.1: long-running ops write ManualSave_Progress.txt periodically so the
+# Lua HUD can show a real percentage instead of sitting blank until done.
+# UNIT=bytes for copies, UNIT=files for delete (no byte count available).
+function Get-FolderSizeBytes($path) {
+    if (-not (Test-Path -LiteralPath $path)) { return 0 }
+    $s = (Get-ChildItem -LiteralPath $path -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum
+    if ($s) { return [int64]$s }
+    return 0
+}
+
+function Write-ProgressFile($copied, $total, $started, $unit) {
+    if (-not $unit) { $unit = "bytes" }
+    if (-not $total -or $total -le 0) { $total = 1 }
+    if (-not $copied) { $copied = 0 }
+    try {
+        @(
+            "STARTED=$started",
+            "TOTAL=$total",
+            "COPIED=$copied",
+            "UNIT=$unit"
+        ) | Set-Content -LiteralPath $PROGRESS -Encoding ASCII
+    } catch {}
+    # Keep the heartbeat alive while a long op blocks the main loop. Without
+    # this the Lua side flips to "watcher offline" after ~2s of silence — even
+    # though the watcher is still doing useful work — and the SignalBus
+    # timeout (30s default) closes the HUD before DELETE/CLONE on a multi-
+    # thousand-file world (e.g. The Ark) can finish.
+    $script:HB = ($script:HB + 1)
+    try {
+        $hbStream = [System.IO.File]::Open($HEARTBEAT,
+            [System.IO.FileMode]::Create,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::Read)
+        $hbBytes = [System.Text.Encoding]::ASCII.GetBytes(([string]$script:HB) + "`r`n")
+        $hbStream.Write($hbBytes, 0, $hbBytes.Length)
+        $hbStream.Close()
+    } catch {}
+}
+
+function Clear-ProgressFile {
+    if (Test-Path -LiteralPath $PROGRESS) {
+        Remove-Item -LiteralPath $PROGRESS -Force -EA SilentlyContinue
+    }
+}
+
+# Copy a directory tree via robocopy in a child process, polling the dst size
+# every 250 ms to feed the Lua HUD. Returns the robocopy exit code so callers
+# keep their existing $LASTEXITCODE-style checks.
+# $robocopyArgs is an array starting with src,dst then any extra switches.
+function Invoke-RobocopyWithProgress($src, $dst, $robocopyArgs) {
+    $totalBytes = Get-FolderSizeBytes $src
+    if ($totalBytes -le 0) { $totalBytes = 1 }
+    $started = [int][double]::Parse(((Get-Date).ToUniversalTime() - (Get-Date '1970-01-01')).TotalSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    Write-ProgressFile 0 $totalBytes $started "bytes"
+    $proc = Start-Process -FilePath "robocopy.exe" -ArgumentList $robocopyArgs `
+        -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\msm_rb_$PID.log"
+    while (-not $proc.HasExited) {
+        Start-Sleep -Milliseconds 250
+        $copied = Get-FolderSizeBytes $dst
+        if ($copied -gt $totalBytes) { $copied = $totalBytes }
+        Write-ProgressFile $copied $totalBytes $started "bytes"
+    }
+    $proc.WaitForExit()
+    Write-ProgressFile $totalBytes $totalBytes $started "bytes"
+    Remove-Item -LiteralPath "$env:TEMP\msm_rb_$PID.log" -Force -EA SilentlyContinue
+    return $proc.ExitCode
+}
+
+# Delete an entire slot tree by spawning `cmd.exe rmdir /s /q` as a CHILD
+# PROCESS, then polling for its exit while the main loop refreshes the
+# heartbeat. The first v1.6.1 attempt iterated Remove-Item in-process, which
+# blocked the watcher loop for 60+ seconds on big modded Apocalypse saves
+# (The Ark + Bandits + Waterpipes, 1k+ files); during that block the
+# heartbeat froze, Lua flipped to "watcher offline", and SignalBus's 30 s
+# timeout fired and closed the HUD before the wipe finished.
+#
+# Spawning rmdir lets us:
+#   * use the fastest reliable wipe on Windows (native, no PS pipeline);
+#   * keep the main loop ticking via the 250 ms poll, so Write-ProgressFile
+#     fires periodically and the embedded heartbeat write keeps Lua happy
+#     no matter how long the wipe takes.
+function Remove-TreeWithProgress($path) {
+    if (-not (Test-Path -LiteralPath $path)) { return }
+    # KEY: do NOT walk the tree to measure size — on a modded Apocalypse save
+    # (The Ark + Bandits + Waterpipes, 5k+ files with Defender attached to
+    # every stat call) Get-ChildItem -Recurse can take 30+ seconds, during
+    # which the main loop is blocked and nothing refreshes the heartbeat.
+    # We instead snap a coarse time-based progress: assume a conservative
+    # ~6 MB/s delete throughput, cap the visible bar at 99% while rmdir is
+    # still running, and snap to 100% on exit. The user gets a moving bar
+    # without paying for repeated full-tree walks.
+    $started = [int][double]::Parse(((Get-Date).ToUniversalTime() - (Get-Date '1970-01-01')).TotalSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    $startedTick = [System.Diagnostics.Stopwatch]::StartNew()
+    $estimatedSecs = 15
+    Write-ProgressFile 0 100 $started "pct"
+
+    # System.Diagnostics.Process is more reliable than Start-Process here:
+    # Start-Process -NoNewWindow has been known to return a $proc whose
+    # HasExited flips to $true before cmd.exe actually finishes (especially
+    # when the parent host is the ISE-style console used by some users).
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName        = "cmd.exe"
+    $psi.Arguments       = '/c rmdir /s /q "' + $path + '"'
+    $psi.CreateNoWindow  = $true
+    $psi.UseShellExecute = $false
+    $psi.WindowStyle     = "Hidden"
+    $proc = [System.Diagnostics.Process]::Start($psi)
+
+    while (-not $proc.HasExited) {
+        Start-Sleep -Milliseconds 250
+        $elapsed = $startedTick.Elapsed.TotalSeconds
+        $pct = [Math]::Min(99, [int](100 * $elapsed / $estimatedSecs))
+        # Write-ProgressFile also bumps the heartbeat (~4 times/second).
+        Write-ProgressFile $pct 100 $started "pct"
+    }
+    $proc.WaitForExit()
+    $rmdirExit = $proc.ExitCode
+
+    # If rmdir bailed for any reason, log it and try once more inline. This
+    # is short-circuited if rmdir already cleared the tree, so the worst
+    # case for "successful rmdir" is a single fast Test-Path check.
+    if (Test-Path -LiteralPath $path) {
+        Write-Host "[ManualSave_Watcher] DELETE: rmdir exited $rmdirExit but path still exists, retrying inline."
+        try { Remove-Item -LiteralPath $path -Recurse -Force -EA SilentlyContinue } catch {}
+        if (Test-Path -LiteralPath $path) {
+            Write-Host "[ManualSave_Watcher] DELETE: WARNING path could not be removed: $path"
+        }
+    }
+    Write-ProgressFile 100 100 $started "pct"
+}
+
 function Save-ThumbCropped($srcPath, $dstPath, $size = 250) {
     $src   = [System.Drawing.Image]::FromFile($srcPath)
     $cropX = [int](($src.Width  - $size) / 2)
@@ -547,8 +680,9 @@ while ($true) {
                 Start-Sleep -Seconds 1
             }
             Write-Host "[ManualSave_Watcher] Copying: $src -> $dst"
-            & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 16) { Write-Host "[ManualSave_Watcher] ERROR: robocopy fatal, code $LASTEXITCODE"; break }
+            $rc = Invoke-RobocopyWithProgress $src $dst @($src, $dst, "/E", "/COPY:DAT", "/R:2", "/W:2", "/NFL", "/NDL", "/NJH", "/NJS")
+            Clear-ProgressFile
+            if ($rc -ge 16) { Write-Host "[ManualSave_Watcher] ERROR: robocopy fatal, code $rc"; break }
             Write-Host "[ManualSave_Watcher] SAVE complete: $dst"
             Add-ToIndex $GMODE $WORLD $SLOT
             if (-not (Test-Path -LiteralPath $THUMBS)) { New-Item -ItemType Directory $THUMBS -Force | Out-Null }
@@ -592,8 +726,9 @@ while ($true) {
             $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             $dst = "$SAVES\$GMODE\$SLOT"
             if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] ERROR: backup not found: $src"; break }
-            & robocopy $src $dst /MIR /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] ERROR: robocopy failed, code $LASTEXITCODE"; break }
+            $rc = Invoke-RobocopyWithProgress $src $dst @($src, $dst, "/MIR", "/COPY:DAT", "/R:2", "/W:2", "/NFL", "/NDL", "/NJH", "/NJS")
+            Clear-ProgressFile
+            if ($rc -ge 8) { Write-Host "[ManualSave_Watcher] ERROR: robocopy failed, code $rc"; break }
             Write-Host "[ManualSave_Watcher] RESTORE complete: $dst"
             $sessionId = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
             Remove-VanillaOwned $GMODE $SLOT   # clear any stale entry for this slot
@@ -630,7 +765,8 @@ while ($true) {
         }
         'DELETE' {
             $target = "$BACKUPS\$GMODE\$WORLD\$SLOT"
-            if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+            if (Test-Path -LiteralPath $target) { Remove-TreeWithProgress $target }
+            Clear-ProgressFile
             if (Test-Path -LiteralPath "$THUMBS\$SLOT.png") { Remove-Item -LiteralPath "$THUMBS\$SLOT.png" -Force }
             Get-ChildItem $THUMBS -Filter "${SLOT}_v*.png" -EA SilentlyContinue | Remove-Item -Force
             $worldDir = "$BACKUPS\$GMODE\$WORLD"
@@ -661,8 +797,9 @@ while ($true) {
             $src = "$BACKUPS\$GMODE\$WORLD\$SLOT"
             $dst = "$SAVES\$GMODE\$EXPORT_NAME"
             if (-not (Test-Path $src)) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: source not found: $src"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
-            & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: robocopy failed, code $LASTEXITCODE"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
+            $rc = Invoke-RobocopyWithProgress $src $dst @($src, $dst, "/E", "/COPY:DAT", "/R:2", "/W:2", "/NFL", "/NDL", "/NJH", "/NJS")
+            Clear-ProgressFile
+            if ($rc -ge 8) { Write-Host "[ManualSave_Watcher] EXPORT_VANILLA: robocopy failed, code $rc"; Write-Done "ERROR" "EXPORT_VANILLA"; break }
             $thumbSrc = "$dst\thumb.png"
             if (Test-Path -LiteralPath $thumbSrc) {
                 try { Save-ThumbCropped $thumbSrc $thumbSrc 250 }
@@ -688,7 +825,11 @@ while ($true) {
             if (-not $OLD_SLOT -and $SLOT -match '^(.+)\|(.+)$') { $OLD_SLOT = $Matches[1]; $NEW_SLOT = $Matches[2] }
             $src = "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT"
             $dst = "$BACKUPS\$GMODE\$WORLD\$NEW_SLOT"
-            if (Test-Path -LiteralPath $src) { & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null }
+            if (Test-Path -LiteralPath $src) {
+                $rc = Invoke-RobocopyWithProgress $src $dst @($src, $dst, "/E", "/COPY:DAT", "/R:2", "/W:2", "/NFL", "/NDL", "/NJH", "/NJS")
+                Clear-ProgressFile
+                if ($rc -ge 8) { Write-Host "[ManualSave_Watcher] CLONE: robocopy failed, code $rc" }
+            }
             Update-Index
             if (Test-Path -LiteralPath "$THUMBS\$OLD_SLOT.png") { Copy-Item -LiteralPath "$THUMBS\$OLD_SLOT.png" -Destination "$THUMBS\$NEW_SLOT.png" -Force }
             elseif (Test-Path -LiteralPath "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT\thumb.png") {
@@ -711,8 +852,9 @@ while ($true) {
             $src = "$BACKUPS\$GMODE\$WORLD\$OLD_SLOT"
             $dst = "$BACKUPS\$GMODE\$WORLD\$NEW_SLOT"
             if (-not (Test-Path -LiteralPath $src)) { Write-Host "[ManualSave_Watcher] CLONE_MODS: source not found: $src"; break }
-            & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS
-            if ($LASTEXITCODE -ge 8) { Write-Host "[ManualSave_Watcher] CLONE_MODS: robocopy failed, code $LASTEXITCODE"; break }
+            $rc = Invoke-RobocopyWithProgress $src $dst @($src, $dst, "/E", "/COPY:DAT", "/R:2", "/W:2", "/NFL", "/NDL", "/NJH", "/NJS")
+            Clear-ProgressFile
+            if ($rc -ge 8) { Write-Host "[ManualSave_Watcher] CLONE_MODS: robocopy failed, code $rc"; break }
             $modLines = ($MOD_LIST -split ',') | ForEach-Object { "mod=$($_.Trim())" } | Where-Object { $_ -ne "mod=" }
             $modLines | Set-Content -LiteralPath "$dst\mods.txt"
             Write-Host "[ManualSave_Watcher] CLONE_MODS: mods.txt written with $(($modLines | Measure-Object).Count) mods."
@@ -757,7 +899,9 @@ while ($true) {
                 $src = "$SAVES\$ig\$iw"; $dst = "$BACKUPS\$ig\$iw\$iw"
                 if (Test-Path -LiteralPath $src) {
                     Write-Host "[ManualSave_Watcher] IMPORT: '$iw' (gmode=$ig) -> $dst"
-                    & robocopy $src $dst /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null
+                    $rc = Invoke-RobocopyWithProgress $src $dst @($src, $dst, "/E", "/COPY:DAT", "/R:2", "/W:2", "/NFL", "/NDL", "/NJH", "/NJS")
+                    Clear-ProgressFile
+                    if ($rc -ge 8) { Write-Host "[ManualSave_Watcher] IMPORT: robocopy failed for '$iw', code $rc"; continue }
                     $mg = $ig -replace ' ','_'; $mw = $iw -replace ' ','_'
                     $meta = "$LuaDir\ManualSaves_Meta_${mg}_${mw}_${mw}.txt"
                     $modsStr = ""

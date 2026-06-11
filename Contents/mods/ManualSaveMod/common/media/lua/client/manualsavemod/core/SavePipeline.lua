@@ -84,7 +84,9 @@ local function executeSave(ctx)
         if ctx.mode == "QUICK" then
             local progressPanel = nil
             if ManualSave.openProgressPanel then
-                progressPanel = ManualSave.openProgressPanel({ label = ctx.slot })
+                progressPanel = ManualSave.openProgressPanel({
+                    label = getText("UI_MSM_Progress_Saving") .. ": " .. ctx.slot,
+                })
             end
             ManualSave.SignalBus.send("SAVE", params,
                 function(status)
